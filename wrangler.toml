@@ -1,0 +1,50 @@
+name = "bap-shop-worker"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bap-shop-db"
+database_id = "055838e4-ec0c-4bca-92b8-9fd3c259b78b"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "bap-shop-images"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "1a697ad608d9445aafbcb89dbda3a94e"
+
+[vars]
+ENVIRONMENT = "development"
+STORE_DOMAIN = "localhost:5173"
+ADMIN_DOMAIN = "localhost:5174"
+R2_PUBLIC_DOMAIN = "https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
+
+[triggers]
+crons = [
+  "*/15 * * * *",
+  "0 * * * *",
+  "0 3 * * *",
+  "0 4 * * 0"
+]
+
+[env.production.vars]
+ENVIRONMENT = "production"
+STORE_DOMAIN = "REPLACE_STORE_PAGES_DOMAIN"
+ADMIN_DOMAIN = "REPLACE_ADMIN_PAGES_DOMAIN"
+R2_PUBLIC_DOMAIN = "REPLACE_R2_PUBLIC_DOMAIN"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "bap-shop-db"
+database_id = "REPLACE_D1_DATABASE_ID"
+
+[[env.production.r2_buckets]]
+binding = "R2"
+bucket_name = "bap-shop-images"
+
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "REPLACE_KV_NAMESPACE_ID"

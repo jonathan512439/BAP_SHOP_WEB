@@ -1,0 +1,34 @@
+{
+  "name": "bap-shop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BAP Shop - Tienda online de segunda mano",
+  "scripts": {
+    "dev:store": "pnpm --filter store dev",
+    "dev:admin": "pnpm --filter admin dev",
+    "dev:worker": "pnpm --filter worker dev",
+    "build:store": "pnpm --filter store build",
+    "build:admin": "pnpm --filter admin build",
+    "build:worker": "pnpm --filter worker build",
+    "typecheck:store": "pnpm --filter store exec vue-tsc --noEmit",
+    "typecheck:admin": "pnpm --filter admin exec vue-tsc --noEmit",
+    "typecheck:worker": "pnpm --filter worker exec tsc --noEmit",
+    "typecheck": "pnpm typecheck:store && pnpm typecheck:admin && pnpm typecheck:worker",
+    "test:admin": "pnpm --filter admin test",
+    "test:worker": "pnpm --filter worker test",
+    "test:store": "pnpm --filter store test",
+    "test": "pnpm test:worker && pnpm test:store && pnpm test:admin",
+    "validate": "pnpm typecheck && pnpm test",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.5.0",
+    "wrangler": "^4.77.0"
+  }
+}

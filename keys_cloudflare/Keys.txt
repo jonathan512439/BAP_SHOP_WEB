@@ -1,0 +1,13 @@
+bap-shop-store.pages.dev
+
+Site Key: 0x4AAAAAACugSmGTmFSM8Ay9
+Secret Key: 0x4AAAAAACugSmnxp0OtzOQL0w3iXzi_2uU
+
+bap-shop-admin
+
+Site Key: 0x4AAAAAACugVnrLb2qPBOEO
+Secret Key: 0x4AAAAAACugVpth24MPJQFD1Ddy3znvKlM
+
+URL de Desarrollo Público:
+https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev
+
