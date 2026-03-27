@@ -16,7 +16,11 @@ bucket_name = "bap-shop-images"
 binding = "KV"
 id = "1a697ad608d9445aafbcb89dbda3a94e"
 
-
+[vars]
+ENVIRONMENT = "development"
+STORE_DOMAIN = "localhost:5173"
+ADMIN_DOMAIN = "localhost:5174"
+R2_PUBLIC_DOMAIN = "pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
 
 [triggers]
 crons = [
