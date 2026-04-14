@@ -22,6 +22,8 @@ export interface Env {
   // Secretos (definidos en .dev.vars o wrangler secret)
   ADMIN_PEPPER: string        // Pepper para Argon2id del hash de contraseñas
   TURNSTILE_SECRET: string    // Secret key de Cloudflare Turnstile
+  TURNSTILE_SECRET_ADMIN?: string
+  TURNSTILE_SECRET_STORE?: string
 }
 
 // Tipo de contexto de Hono con el entorno tipado
@@ -31,6 +33,7 @@ export type HonoEnv = {
     adminId: string
     adminUsername: string
     csrfToken: string
+    sessionId: string
     requestId: string
   }
 }

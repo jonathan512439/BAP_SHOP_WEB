@@ -68,8 +68,9 @@ export interface CreateOrderResult {
 }
 
 /**
- * Crea el pedido y reserva todos los artículos en una transacción D1 (batch atómico).
- * Si algún artículo ya no está 'active', retorna error.
+ * Crea el pedido y deja todos los artículos en estado reservado hasta que:
+ * 1. el admin confirme la venta y los marque como sold, o
+ * 2. expire la reserva y el cron los devuelva a active.
  */
 export async function createOrderTransaction(
   db: D1Database,
@@ -95,7 +96,6 @@ export async function createOrderTransaction(
     .run()
 
   if ((reserveResult.meta?.changes ?? 0) !== productIds.length) {
-    await releaseReservedProducts(db, orderId, now)
     throw new ConcurrencyError('Uno o más artículos ya no estaban disponibles al reservar')
   }
 
@@ -130,26 +130,28 @@ export async function createOrderTransaction(
   try {
     await db.batch(statements)
   } catch (error) {
-    await releaseReservedProducts(db, orderId, now)
+    await rollbackReservedProducts(db, productIds, now)
     throw error
   }
 
   return { orderId, orderCode, expiresAt }
 }
 
-async function releaseReservedProducts(
+async function rollbackReservedProducts(
   db: D1Database,
-  orderId: string,
+  productIds: string[],
   now: string
 ): Promise<void> {
+  if (productIds.length === 0) return
+  const placeholders = productIds.map(() => '?').join(', ')
   await db.prepare(
     `UPDATE products
      SET status = 'active',
          reserved_order_id = NULL,
          reserved_until = NULL,
          updated_at = ?
-     WHERE reserved_order_id = ?`
-  ).bind(now, orderId).run()
+     WHERE id IN (${placeholders})`
+  ).bind(now, ...productIds).run()
 }
 
 export class ConcurrencyError extends Error {

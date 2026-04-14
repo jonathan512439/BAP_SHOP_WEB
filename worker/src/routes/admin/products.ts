@@ -17,7 +17,7 @@ adminProductsRouter.use('*', authMiddleware())
 const sneakerSchema = z.object({
   type: z.literal('sneaker'),
   name: z.string().min(1).max(200).trim(),
-  model_id: z.string().uuid(),
+  model_id: z.string().min(1).max(120).trim(),
   size: z.string().min(1).max(20).trim(),
   price: z.number().int().positive(),
   physical_condition: z.enum(['new', 'like_new', 'very_good', 'good', 'acceptable']),
@@ -43,7 +43,7 @@ const productUpdateSchema = z.object({
   physical_condition: z.enum(['new', 'like_new', 'very_good', 'good', 'acceptable']).optional(),
   description: z.string().max(2000).optional(),
   characteristics: z.string().max(1000).optional(),
-  model_id: z.string().uuid().optional(),
+  model_id: z.string().min(1).max(120).trim().optional(),
   size: z.string().min(1).max(20).optional(),
 })
 
@@ -199,7 +199,7 @@ adminProductsRouter.put('/:id', csrfMiddleware(), zValidator('json', productUpda
 // ============================================================
 // PATCH /admin/products/:id/status
 // ============================================================
-adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.object({ status: z.enum(['active', 'hidden', 'sold']) })), async (c) => {
+adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.object({ status: z.enum(['active', 'hidden', 'reserved', 'sold']) })), async (c) => {
   const { id } = c.req.param()
   const { status: newStatus } = c.req.valid('json')
   const now = nowISO()
@@ -229,8 +229,8 @@ adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.
 
   await c.env.DB.prepare(
     `UPDATE products SET status = ?, updated_at = ?,
-     reserved_order_id = CASE WHEN ? = 'sold' THEN NULL ELSE reserved_order_id END,
-     reserved_until = CASE WHEN ? = 'sold' THEN NULL ELSE reserved_until END
+     reserved_order_id = CASE WHEN ? IN ('active', 'sold', 'hidden', 'reserved') THEN NULL ELSE reserved_order_id END,
+     reserved_until = CASE WHEN ? IN ('active', 'sold', 'hidden', 'reserved') THEN NULL ELSE reserved_until END
      WHERE id = ?`
   ).bind(newStatus, now, newStatus, newStatus, id).run()
 
@@ -238,6 +238,59 @@ adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.
   await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
 
   return c.json({ success: true, data: { id, status: newStatus } })
+})
+
+// ============================================================
+// DELETE /admin/products/:id
+// ============================================================
+adminProductsRouter.delete('/:id', csrfMiddleware(), async (c) => {
+  const { id } = c.req.param()
+
+  const product = await c.env.DB.prepare(
+    'SELECT id, name, status FROM products WHERE id = ?'
+  ).bind(id).first<{ id: string; name: string; status: string }>()
+
+  if (!product) {
+    return c.json({ success: false, error: 'Producto no encontrado' }, 404)
+  }
+
+  const linkedOpenOrder = await c.env.DB.prepare(
+    `SELECT o.id
+     FROM order_items oi
+     JOIN orders o ON o.id = oi.order_id
+     WHERE oi.product_id = ? AND o.status = 'pending'
+     LIMIT 1`
+  ).bind(id).first<{ id: string }>()
+
+  if (linkedOpenOrder) {
+    return c.json(
+      {
+        success: false,
+        error: 'No puedes eliminar un producto con un pedido pendiente. Si solo quieres quitarlo del catalogo, cambialo a oculto o cancela el pedido primero.',
+      },
+      409
+    )
+  }
+
+  const images = await c.env.DB.prepare(
+    'SELECT r2_key FROM product_images WHERE product_id = ?'
+  ).bind(id).all<{ r2_key: string }>()
+
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM product_images WHERE product_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM product_promotions WHERE product_id = ?').bind(id),
+    c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id),
+  ])
+
+  const r2Deletes = images.results.map((image) => c.env.R2.delete(image.r2_key))
+  r2Deletes.push(c.env.R2.delete(`public/products/${id}.json`))
+  r2Deletes.push(c.env.R2.delete(`products/${id}.json`))
+  await Promise.all(r2Deletes)
+
+  await logAction(c.env.DB, c.get('adminId'), 'product.delete', 'product', id, product, null)
+  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+
+  return c.json({ success: true, data: { id } })
 })
 
 // ============================================================
@@ -277,7 +330,7 @@ adminProductsRouter.post('/:id/images', csrfMiddleware(), async (c) => {
   }
 
   const imgId = generateId()
-  const r2Key = `products/${id}/${imgId}.${ext}`
+  const r2Key = `public/products/${id}/${imgId}.${ext}`
 
   await c.env.R2.put(r2Key, body, { httpMetadata: { contentType } })
 

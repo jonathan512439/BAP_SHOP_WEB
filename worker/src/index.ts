@@ -6,11 +6,12 @@ import { handleScheduled } from './cron'
 // Import de Routers
 import { authRouter } from './routes/auth'
 import { ordersRouter } from './routes/orders'
+import { publicAssetsRouter } from './routes/public-assets'
 import { adminProductsRouter } from './routes/admin/products'
 import { adminBrandsRouter, adminModelsRouter } from './routes/admin/brands-models'
 import { adminPromotionsRouter } from './routes/admin/promotions'
 import { adminOrdersRouter } from './routes/admin/orders'
-import { adminSettingsRouter, adminAuditRouter } from './routes/admin/settings-audit'
+import { adminSettingsRouter, adminAuditRouter, publicSettingsRouter } from './routes/admin/settings-audit'
 
 // ============================================================
 // Aplicación Hono principal
@@ -40,6 +41,8 @@ app.get('/health', (c) => {
 // ============================================================
 app.route('/auth', authRouter)
 app.route('/orders', ordersRouter)
+app.route('/settings', publicSettingsRouter)
+app.route('/public', publicAssetsRouter)
 
 // ============================================================
 // Montado de APIs Admin

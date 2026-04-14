@@ -33,16 +33,16 @@ onMounted(() => {
   <div class="success-view glass-card">
     <div class="icon-success">OK</div>
 
-    <h2>Pedido reservado correctamente</h2>
+    <h2>Solicitud enviada correctamente</h2>
     <p class="info-text">
       Tu codigo <strong>{{ orderCode || 'pendiente' }}</strong> ya fue generado. Usa el boton de WhatsApp para
-      terminar la coordinacion del pedido. Si no se confirma dentro del plazo configurado, los articulos volveran al
-      catalogo publico.
+      continuar la coordinacion con la tienda. Si la compra no se confirma dentro del plazo establecido, los articulos
+      pueden volver a estar disponibles.
     </p>
 
     <div v-if="priceChanges.length > 0" class="price-change-card">
       <h3>Precios actualizados</h3>
-      <p>Al menos uno de los articulos cambio de precio durante el checkout. La orden ya fue creada con el valor vigente.</p>
+      <p>Al menos uno de los articulos cambio de precio antes de enviar tu solicitud. El pedido ya fue preparado con el valor vigente.</p>
       <ul>
         <li v-for="change in priceChanges" :key="change.productId">
           {{ change.productName }}: {{ formatPrice(change.cartPrice) }} -> {{ formatPrice(change.actualPrice) }}
@@ -57,7 +57,7 @@ onMounted(() => {
       </a>
 
       <p v-else class="fallback">
-        No se pudo recuperar el enlace automaticamente. Contacta a la tienda indicando el codigo
+        No se pudo abrir el enlace automaticamente. Contacta a la tienda indicando el codigo
         {{ orderCode || 'de tu pedido' }}.
       </p>
 

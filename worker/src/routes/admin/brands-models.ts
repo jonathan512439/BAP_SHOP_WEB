@@ -90,6 +90,19 @@ adminBrandsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
   return c.json({ success: true })
 })
 
+// PATCH /admin/brands/:id/restore
+adminBrandsRouter.patch('/:id/restore', csrfMiddleware(), async (c) => {
+  const { id } = c.req.param()
+
+  const brand = await c.env.DB.prepare('SELECT id, is_active FROM brands WHERE id = ?').bind(id).first<{ id: string; is_active: number }>()
+  if (!brand) return c.json({ success: false, error: 'Marca no encontrada' }, 404)
+
+  await c.env.DB.prepare('UPDATE brands SET is_active = 1 WHERE id = ?').bind(id).run()
+  await logAction(c.env.DB, c.get('adminId'), 'brand.restore', 'brand', id, brand, { is_active: 1 })
+
+  return c.json({ success: true })
+})
+
 // ============================================================
 // MODELOS
 // ============================================================
@@ -112,7 +125,7 @@ adminModelsRouter.get('/', async (c) => {
 })
 
 const modelSchema = z.object({
-  brand_id: z.string().uuid(),
+  brand_id: z.string().min(1).max(120).trim(),
   name: z.string().min(1).max(100).trim(),
 })
 
@@ -178,6 +191,31 @@ adminModelsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
 
   await c.env.DB.prepare('UPDATE models SET is_active = 0 WHERE id = ?').bind(id).run()
   await logAction(c.env.DB, c.get('adminId'), 'model.archive', 'model', id)
+
+  return c.json({ success: true })
+})
+
+// PATCH /admin/models/:id/restore
+adminModelsRouter.patch('/:id/restore', csrfMiddleware(), async (c) => {
+  const { id } = c.req.param()
+
+  const model = await c.env.DB.prepare(
+    `SELECT m.id, m.brand_id, m.is_active, b.is_active AS brand_is_active
+     FROM models m
+     JOIN brands b ON b.id = m.brand_id
+     WHERE m.id = ?`
+  ).bind(id).first<{ id: string; brand_id: string; is_active: number; brand_is_active: number }>()
+  if (!model) return c.json({ success: false, error: 'Modelo no encontrado' }, 404)
+
+  if (!model.brand_is_active) {
+    return c.json({
+      success: false,
+      error: 'No puedes restaurar este modelo mientras su marca este archivada. Restaura la marca primero.',
+    }, 409)
+  }
+
+  await c.env.DB.prepare('UPDATE models SET is_active = 1 WHERE id = ?').bind(id).run()
+  await logAction(c.env.DB, c.get('adminId'), 'model.restore', 'model', id, model, { is_active: 1 })
 
   return c.json({ success: true })
 })

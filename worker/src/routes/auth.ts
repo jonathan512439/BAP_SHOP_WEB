@@ -3,7 +3,8 @@ import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../types/env'
 import { rateLimitMiddleware, authMiddleware, csrfMiddleware, parseCookie, sha256 } from '../middleware'
-import { verifyPassword, generateSessionToken, generateCsrfToken } from '../lib/auth'
+import { verifyPassword, generateSessionToken, generateCsrfToken, hashPassword } from '../lib/auth'
+import { logAction } from '../lib/audit'
 import { generateId, nowISO, addHoursISO, SESSION_DURATION_HOURS } from '@bap-shop/shared'
 
 export const authRouter = new Hono<HonoEnv>()
@@ -25,7 +26,8 @@ authRouter.post(
     const { username, password, turnstileToken } = c.req.valid('json')
 
     // 1. Verificar Turnstile
-    const turnstileOk = await verifyTurnstile(turnstileToken, c.env.TURNSTILE_SECRET)
+    const turnstileSecret = c.env.TURNSTILE_SECRET_ADMIN ?? c.env.TURNSTILE_SECRET
+    const turnstileOk = await verifyTurnstile(turnstileToken, turnstileSecret)
     if (!turnstileOk) {
       return c.json({ success: false, error: 'Verificación de seguridad fallida' }, 422)
     }
@@ -73,30 +75,30 @@ authRouter.post(
 
     // 6. Setear cookies
     const isProd = c.env.ENVIRONMENT === 'production'
-    const adminDomain = c.env.ADMIN_DOMAIN
     const maxAgeSec = SESSION_DURATION_HOURS * 3600
+    const cookieSameSite: 'Lax' | 'Strict' = isProd ? 'Lax' : 'Strict'
 
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.append(
       'Set-Cookie',
-      buildCookie('bap_session', encodeURIComponent(token), {
-        maxAge: maxAgeSec,
-        domain: isProd ? adminDomain : undefined,
-        httpOnly: true,
-        secure: isProd,
-      })
-    )
+        buildCookie('bap_session', encodeURIComponent(token), {
+          maxAge: maxAgeSec,
+          httpOnly: true,
+          secure: isProd,
+          sameSite: cookieSameSite,
+        })
+      )
     headers.append(
       'Set-Cookie',
-      buildCookie('bap_csrf', csrfToken, {
-        maxAge: maxAgeSec,
-        domain: isProd ? adminDomain : undefined,
-        httpOnly: false,
-        secure: isProd,
-      })
-    )
+        buildCookie('bap_csrf', csrfToken, {
+          maxAge: maxAgeSec,
+          httpOnly: false,
+          secure: isProd,
+          sameSite: cookieSameSite,
+        })
+      )
 
-    return new Response(JSON.stringify({ success: true, data: { adminId: admin.id, username: admin.username } }), {
+    return new Response(JSON.stringify({ success: true, data: { adminId: admin.id, username: admin.username, csrfToken } }), {
       status: 200,
       headers,
     })
@@ -118,24 +120,24 @@ authRouter.post('/logout', authMiddleware(), csrfMiddleware(), async (c) => {
   }
 
   const isProd = c.env.ENVIRONMENT === 'production'
-  const adminDomain = c.env.ADMIN_DOMAIN
+  const cookieSameSite: 'Lax' | 'Strict' = isProd ? 'Lax' : 'Strict'
   const headers = new Headers({ 'Content-Type': 'application/json' })
   headers.append(
     'Set-Cookie',
     buildCookie('bap_session', '', {
       maxAge: 0,
-      domain: isProd ? adminDomain : undefined,
       httpOnly: true,
       secure: isProd,
+      sameSite: cookieSameSite,
     })
   )
   headers.append(
     'Set-Cookie',
     buildCookie('bap_csrf', '', {
       maxAge: 0,
-      domain: isProd ? adminDomain : undefined,
       httpOnly: false,
       secure: isProd,
+      sameSite: cookieSameSite,
     })
   )
 
@@ -154,9 +156,67 @@ authRouter.get('/me', authMiddleware(), async (c) => {
     data: {
       adminId: c.get('adminId'),
       username: c.get('adminUsername'),
+      csrfToken: c.get('csrfToken'),
     },
   })
 })
+
+// ============================================================
+// PATCH /auth/password
+// ============================================================
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8).max(200),
+})
+
+authRouter.patch(
+  '/password',
+  authMiddleware(),
+  csrfMiddleware(),
+  rateLimitMiddleware('rl:password-change', 5, 15 * 60),
+  zValidator('json', changePasswordSchema),
+  async (c) => {
+    const { currentPassword, newPassword } = c.req.valid('json')
+
+    if (currentPassword === newPassword) {
+      return c.json({ success: false, error: 'La nueva contraseña debe ser diferente a la actual' }, 422)
+    }
+
+    const admin = await c.env.DB.prepare(
+      'SELECT id, username, password_hash FROM admins WHERE id = ? LIMIT 1'
+    )
+      .bind(c.get('adminId'))
+      .first<{ id: string; username: string; password_hash: string }>()
+
+    if (!admin) {
+      return c.json({ success: false, error: 'Administrador no encontrado' }, 404)
+    }
+
+    const passwordOk = await verifyPassword(currentPassword, admin.password_hash, c.env.ADMIN_PEPPER)
+    if (!passwordOk) {
+      return c.json({ success: false, error: 'La contraseña actual es incorrecta' }, 401)
+    }
+
+    const newHash = await hashPassword(newPassword, c.env.ADMIN_PEPPER)
+
+    await c.env.DB.batch([
+      c.env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').bind(newHash, admin.id),
+      c.env.DB.prepare('DELETE FROM admin_sessions WHERE admin_id = ? AND id <> ?').bind(admin.id, c.get('sessionId')),
+    ])
+
+    await logAction(
+      c.env.DB,
+      admin.id,
+      'auth.password_change',
+      'admin',
+      admin.id,
+      { username: admin.username },
+      { invalidated_other_sessions: true }
+    )
+
+    return c.json({ success: true })
+  }
+)
 
 // ============================================================
 // Helper: verificar token de Turnstile
@@ -183,21 +243,18 @@ function buildCookie(
   value: string,
   options: {
     maxAge: number
-    domain?: string
     httpOnly: boolean
     secure: boolean
+    sameSite: 'Strict' | 'Lax'
   }
 ): string {
-  const parts = [`${name}=${value}`, 'Path=/', 'SameSite=Strict', `Max-Age=${options.maxAge}`]
+  const parts = [`${name}=${value}`, 'Path=/', `SameSite=${options.sameSite}`, `Max-Age=${options.maxAge}`]
 
   if (options.httpOnly) {
     parts.push('HttpOnly')
   }
   if (options.secure) {
     parts.push('Secure')
-  }
-  if (options.domain) {
-    parts.push(`Domain=${options.domain}`)
   }
 
   return parts.join('; ')

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { applyDiscount, formatPrice } from '@bap-shop/shared'
 import { apiClient } from '../api/client'
 import BaseConfirmModal from '../components/BaseConfirmModal.vue'
@@ -37,6 +37,7 @@ const isSaving = ref(false)
 const isConfirmingDisable = ref(false)
 const editingProductId = ref<string | null>(null)
 const productIdPendingDisable = ref<string | null>(null)
+const feedback = ref('')
 const filters = ref({
   search: '',
   status: '',
@@ -46,8 +47,21 @@ const form = ref({
   discountPct: 15,
   startsAt: '',
   endsAt: '',
+  durationPreset: '10080',
   enabled: true,
 })
+
+const DURATION_OPTIONS = [
+  { value: '60', label: '1 hora' },
+  { value: '120', label: '2 horas' },
+  { value: '360', label: '6 horas' },
+  { value: '720', label: '12 horas' },
+  { value: '1440', label: '24 horas' },
+  { value: '2880', label: '2 dias' },
+  { value: '7200', label: '5 dias' },
+  { value: '10080', label: '1 semana' },
+  { value: 'custom', label: 'Personalizado' },
+]
 
 const promoMap = computed(() => new Map(promos.value.map((promo) => [promo.product_id, promo])))
 
@@ -96,10 +110,35 @@ const toLocalInputValue = (iso?: string | null) => {
 
 const toIsoDate = (value: string) => new Date(value).toISOString()
 
+const addMinutesToLocalValue = (value: string, minutes: number) => {
+  const date = new Date(value)
+  date.setMinutes(date.getMinutes() + minutes)
+  return toLocalInputValue(date.toISOString())
+}
+
 const createDefaultEndDate = () => {
-  const now = new Date()
-  now.setDate(now.getDate() + 7)
-  return toLocalInputValue(now.toISOString())
+  return addMinutesToLocalValue(toLocalInputValue(new Date().toISOString()), 10080)
+}
+
+const getDurationPresetForRange = (startsAt: string, endsAt: string) => {
+  if (!startsAt || !endsAt) return '10080'
+
+  const start = new Date(startsAt)
+  const end = new Date(endsAt)
+  const diffMinutes = Math.round((end.getTime() - start.getTime()) / 60_000)
+  const matchingPreset = DURATION_OPTIONS.find((option) => option.value !== 'custom' && Number(option.value) === diffMinutes)
+  return matchingPreset?.value ?? 'custom'
+}
+
+const applyDurationPreset = (presetValue: string) => {
+  form.value.durationPreset = presetValue
+  if (presetValue === 'custom' || !form.value.startsAt) return
+
+  form.value.endsAt = addMinutesToLocalValue(form.value.startsAt, Number(presetValue))
+}
+
+const onDurationPresetChange = (event: Event) => {
+  applyDurationPreset((event.target as HTMLSelectElement).value)
 }
 
 const formatDate = (iso?: string | null) => {
@@ -107,12 +146,12 @@ const formatDate = (iso?: string | null) => {
   return new Date(iso).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-const buildImageUrl = (r2Key?: string | null) => {
-  return r2Key ? `https://assets.bapshop.com/${r2Key}` : null
-}
+const assetsBase = import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
+const buildImageUrl = (r2Key?: string | null) => (r2Key ? `${assetsBase}/${r2Key.replace(/^public\//, '')}` : null)
 
 const fetchData = async () => {
   isLoading.value = true
+  feedback.value = ''
 
   try {
     const [productsRes, promosRes] = await Promise.all([
@@ -142,6 +181,7 @@ const openEditor = (row: PromotionTableRow) => {
     form.value.discountPct = row.promotion.discount_pct
     form.value.startsAt = toLocalInputValue(row.promotion.starts_at)
     form.value.endsAt = toLocalInputValue(row.promotion.ends_at)
+    form.value.durationPreset = getDurationPresetForRange(form.value.startsAt, form.value.endsAt)
     form.value.enabled = row.promotion.enabled === 1
     return
   }
@@ -149,6 +189,7 @@ const openEditor = (row: PromotionTableRow) => {
   form.value.discountPct = 15
   form.value.startsAt = toLocalInputValue(new Date().toISOString())
   form.value.endsAt = createDefaultEndDate()
+  form.value.durationPreset = '10080'
   form.value.enabled = true
 }
 
@@ -173,6 +214,7 @@ const savePromotion = async () => {
   }
 
   isSaving.value = true
+  feedback.value = ''
 
   try {
     await apiClient(`/admin/promotions/${editingProductId.value}`, {
@@ -186,6 +228,7 @@ const savePromotion = async () => {
     })
 
     await fetchData()
+    feedback.value = 'Promoción guardada. Recarga la tienda si estaba abierta para ver el precio actualizado.'
     closeEditor()
   } catch (error: any) {
     alert(`Error guardando promocion: ${error.message}`)
@@ -211,6 +254,24 @@ const disablePromo = async () => {
 onMounted(() => {
   fetchData()
 })
+
+watch(
+  () => form.value.startsAt,
+  (value, oldValue) => {
+    if (!value || !oldValue) return
+    if (form.value.durationPreset === 'custom') return
+
+    form.value.endsAt = addMinutesToLocalValue(value, Number(form.value.durationPreset))
+  }
+)
+
+watch(
+  () => form.value.endsAt,
+  (value) => {
+    if (!value || !form.value.startsAt) return
+    form.value.durationPreset = getDurationPresetForRange(form.value.startsAt, value)
+  }
+)
 </script>
 
 <template>
@@ -221,6 +282,10 @@ onMounted(() => {
         <p class="header-copy">Configura una sola promocion por producto activo y revisa el precio final antes de guardar.</p>
       </div>
       <button type="button" class="btn btn-secondary" @click="reloadPromotions">Recargar</button>
+    </div>
+
+    <div v-if="feedback" class="feedback-banner">
+      {{ feedback }}
     </div>
 
     <div class="admin-card filters-bar">
@@ -297,7 +362,7 @@ onMounted(() => {
           />
         </td>
         <td class="actions">
-          <button type="button" class="btn btn-sm" @click="openEditor(row)">
+          <button type="button" class="btn btn-primary btn-sm" @click="openEditor(row)">
             {{ row.promotion ? 'Editar' : 'Agregar' }}
           </button>
           <button
@@ -333,6 +398,18 @@ onMounted(() => {
             <input v-model="form.startsAt" type="datetime-local" />
           </FormField>
 
+          <FormSelect label="Duracion rapida" help="Atajo para fijar el vencimiento automaticamente desde la fecha de inicio.">
+            <select
+              :value="form.durationPreset"
+              class="form-select"
+              @change="onDurationPresetChange"
+            >
+              <option v-for="option in DURATION_OPTIONS" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+          </FormSelect>
+
           <FormField label="Fin" help="Cuando expire, el cron puede deshabilitarla automaticamente.">
             <input v-model="form.endsAt" type="datetime-local" />
           </FormField>
@@ -353,7 +430,7 @@ onMounted(() => {
 
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" @click="closeEditor">Cancelar</button>
-          <button type="button" class="btn" :disabled="isSaving" @click="savePromotion">
+          <button type="button" class="btn btn-primary" :disabled="isSaving" @click="savePromotion">
             {{ isSaving ? 'Guardando...' : 'Guardar promocion' }}
           </button>
         </div>
@@ -390,6 +467,15 @@ onMounted(() => {
 .header-copy {
   color: var(--text-secondary);
   margin: 0;
+}
+
+.feedback-banner {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  background: rgba(59, 130, 246, 0.1);
+  color: #bfdbfe;
 }
 
 .filters-bar {
@@ -486,6 +572,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
 }
 
 .modal h3 {
@@ -531,5 +619,42 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .header-actions {
+    flex-direction: column;
+    margin-bottom: 1.25rem;
+  }
+
+  .filters-bar {
+    gap: 0.75rem;
+  }
+
+  .thumb {
+    width: 56px;
+    height: 56px;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+
+  .actions .btn {
+    width: 100%;
+  }
+
+  .modal {
+    width: min(100%, 560px);
+    padding-bottom: 1rem;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
 }
 </style>

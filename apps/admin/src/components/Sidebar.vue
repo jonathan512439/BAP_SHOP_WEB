@@ -1,10 +1,23 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useBrandingStore } from '../stores/branding'
+
+defineProps<{
+  isOpen?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'close'): void
+}>()
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const brandingStore = useBrandingStore()
+const brandLogoSrc = computed(() => brandingStore.branding.brand_logo_url || '')
+const brandTitle = computed(() => brandingStore.branding.store_name || 'BAP Shop')
 
 const navItems = [
   { name: 'Dashboard', path: '/' },
@@ -19,14 +32,29 @@ const navItems = [
 
 const handleLogout = async () => {
   await authStore.logout()
+  emit('close')
   router.push('/login')
 }
 </script>
 
 <template>
-  <aside class="sidebar-container">
+  <aside class="sidebar-container" :class="{ 'sidebar-open': isOpen }">
     <div class="brand">
-      <h1>BAP Admin</h1>
+      <div class="brand-copy">
+        <img v-if="brandLogoSrc" :src="brandLogoSrc" alt="BAP Shop" class="brand-logo" />
+        <div>
+          <h1>{{ brandTitle }}</h1>
+          <p>Panel de control</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        class="close-btn"
+        aria-label="Cerrar menu lateral"
+        @click="emit('close')"
+      >
+        ×
+      </button>
     </div>
 
     <nav class="nav-menu">
@@ -36,6 +64,7 @@ const handleLogout = async () => {
         :to="item.path"
         class="nav-link"
         :class="{ active: route.path === item.path }"
+        @click="emit('close')"
       >
         {{ item.name }}
       </router-link>
@@ -60,15 +89,50 @@ const handleLogout = async () => {
   height: 64px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 1.5rem;
   border-bottom: 1px solid var(--border-light);
 }
 
+.brand-copy {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
 .brand h1 {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.brand p {
+  margin: 0.15rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.close-btn {
+  display: none;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
 }
 
 .nav-menu {
@@ -116,5 +180,13 @@ const handleLogout = async () => {
 .logout-btn:hover {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 </style>

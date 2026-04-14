@@ -10,10 +10,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "vue": "^3.5.0",
-    "vue-router": "^4.4.0",
+    "@bap-shop/shared": "workspace:*",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "pinia": "^2.2.0",
-    "@bap-shop/shared": "workspace:*"
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.0",

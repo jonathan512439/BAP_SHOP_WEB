@@ -60,11 +60,19 @@ export function calculateOrderTotals(
 }
 
 /**
- * Formatea un precio entero como string con separador de miles.
- * Ejemplo: 45000 -> "$45.000"
+ * Formateo de moneda BOB sin decimales, usando Intl.NumberFormat.
+ * Ejemplo: 12500 -> "Bs12.500"
+ * Si el monto no es un número finito, retorna "Bs0".
  */
-export function formatPrice(amount: number, currency = '$'): string {
-  return `${currency}${amount.toLocaleString('es-AR')}`
+const bobFormatter = new Intl.NumberFormat('es-BO', {
+  style: 'currency',
+  currency: 'BOB',
+  currencyDisplay: 'narrowSymbol',
+})
+
+export function formatPrice(amount: number): string {
+  if (!Number.isFinite(amount)) return bobFormatter.format(0)
+  return bobFormatter.format(amount)
 }
 
 /**

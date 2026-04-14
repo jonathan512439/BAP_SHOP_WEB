@@ -94,8 +94,11 @@ adminOrdersRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', upda
     id: string; status: string; order_code: string
   }>()
   if (!order) return c.json({ success: false, error: 'Pedido no encontrado' }, 404)
-  if (order.status !== 'pending') {
+  if (!['pending', 'confirmed'].includes(order.status)) {
     return c.json({ success: false, error: `No se puede cambiar el estado de un pedido en estado "${order.status}"` }, 409)
+  }
+  if (order.status === status) {
+    return c.json({ success: false, error: `El pedido ya está en estado "${status}"` }, 409)
   }
 
   // Obtener los productIds del pedido para actualizarlos
@@ -119,16 +122,16 @@ adminOrdersRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', upda
     statements.push(
       c.env.DB.prepare(
         `UPDATE products SET status = 'sold', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
-         WHERE id IN (${placeholders}) AND reserved_order_id = ?`
-      ).bind(now, ...productIds, id)
+         WHERE id IN (${placeholders})`
+      ).bind(now, ...productIds)
     )
   } else {
     // status === 'cancelled' → artículos vuelven a active
     statements.push(
       c.env.DB.prepare(
         `UPDATE products SET status = 'active', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
-         WHERE id IN (${placeholders}) AND reserved_order_id = ?`
-      ).bind(now, ...productIds, id)
+         WHERE id IN (${placeholders})`
+      ).bind(now, ...productIds)
     )
   }
 

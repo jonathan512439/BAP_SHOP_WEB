@@ -23,12 +23,28 @@ interface ProductRow {
   promo_pct?: number | null
 }
 
+type ProductAction = 'active' | 'hidden' | 'reserved' | 'sold' | 'delete'
+
+interface ProductPendingAction {
+  id: string
+  name: string
+  action: ProductAction
+}
+
+interface FeedbackModalState {
+  title: string
+  message: string
+  variant: 'danger' | 'warning' | 'neutral'
+}
+
 const router = useRouter()
 const products = ref<ProductRow[]>([])
 const isLoading = ref(true)
 const isUpdating = ref<string | null>(null)
-const productPendingStatusChange = ref<{ id: string; name: string; nextStatus: string } | null>(null)
+const productPendingAction = ref<ProductPendingAction | null>(null)
+const feedbackModal = ref<FeedbackModalState | null>(null)
 const meta = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
+const publicAssetsBase = import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
 
 const filters = ref({
   status: '',
@@ -51,13 +67,47 @@ const typeOptions = [
   { value: 'other', label: 'Otro' },
 ]
 
-const transitionOptions = computed(() => {
-  return (status: string) => {
-    if (status === 'draft') return [{ value: 'active', label: 'Activar' }]
-    if (status === 'active') return [{ value: 'hidden', label: 'Ocultar' }, { value: 'sold', label: 'Vender' }]
-    if (status === 'hidden') return [{ value: 'active', label: 'Activar' }, { value: 'sold', label: 'Vender' }]
-    if (status === 'reserved') return [{ value: 'active', label: 'Liberar' }, { value: 'sold', label: 'Vender' }]
-    return []
+const actionLabels: Record<ProductAction, string> = {
+  active: 'Activar',
+  hidden: 'Ocultar',
+  reserved: 'Reservar',
+  sold: 'Vender',
+  delete: 'Eliminar',
+}
+
+const actionClassMap: Record<ProductAction, string> = {
+  active: 'btn-action-active',
+  hidden: 'btn-action-hidden',
+  reserved: 'btn-action-reserved',
+  sold: 'btn-action-sold',
+  delete: 'btn-action-delete',
+}
+
+const modalVariantMap: Record<ProductAction, 'danger' | 'warning' | 'neutral'> = {
+  active: 'neutral',
+  hidden: 'warning',
+  reserved: 'warning',
+  sold: 'danger',
+  delete: 'danger',
+}
+
+const actionOptions = computed(() => {
+  return (status: string): Array<{ value: ProductAction; label: string; className: string }> => {
+    const options: ProductAction[] = []
+
+    if (status !== 'active') options.push('active')
+    if (status === 'active') options.push('hidden', 'reserved', 'sold')
+    if (status === 'hidden') options.push('reserved', 'sold')
+    if (status === 'sold') options.push('hidden')
+    if (status === 'reserved') options.push('sold')
+    if (status !== 'sold') options.push('delete')
+    if (status === 'sold') options.push('delete')
+
+    return options.map((value) => ({
+      value,
+      label: actionLabels[value],
+      className: actionClassMap[value],
+    }))
   }
 })
 
@@ -68,12 +118,16 @@ const summary = computed(() => ({
   reserved: products.value.filter((product) => product.status === 'reserved').length,
 }))
 
-const pendingStatusMessage = computed(() => {
-  if (!productPendingStatusChange.value) {
+const pendingActionMessage = computed(() => {
+  if (!productPendingAction.value) {
     return ''
   }
 
-  return `Cambiar "${productPendingStatusChange.value.name}" a ${productPendingStatusChange.value.nextStatus}.`
+  if (productPendingAction.value.action === 'delete') {
+    return `Eliminar "${productPendingAction.value.name}" del sistema. Esta accion borra el producto, sus imagenes y su promocion asociada.`
+  }
+
+  return `Cambiar "${productPendingAction.value.name}" a ${actionLabels[productPendingAction.value.action].toLowerCase()}.`
 })
 
 const fetchProducts = async (page = 1) => {
@@ -91,7 +145,11 @@ const fetchProducts = async (page = 1) => {
     products.value = res.data
     meta.value = res.meta
   } catch (error: any) {
-    alert(`Error cargando productos: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudieron cargar los productos',
+      message: error.message || 'Ocurrio un error cargando el listado.',
+      variant: 'danger',
+    }
   } finally {
     isLoading.value = false
   }
@@ -112,64 +170,64 @@ const reloadProducts = () => {
   fetchProducts(meta.value.page)
 }
 
-const requestStatusChange = (product: ProductRow, nextStatus: string) => {
-  productPendingStatusChange.value = {
+const requestAction = (product: ProductRow, action: ProductAction) => {
+  productPendingAction.value = {
     id: product.id,
     name: product.name,
-    nextStatus,
+    action,
   }
 }
 
-const closeStatusChangeModal = () => {
-  productPendingStatusChange.value = null
+const closeActionModal = () => {
+  productPendingAction.value = null
 }
 
-const confirmStatusChange = async () => {
-  if (!productPendingStatusChange.value) return
+const closeFeedbackModal = () => {
+  feedbackModal.value = null
+}
 
-  isUpdating.value = productPendingStatusChange.value.id
+const confirmAction = async () => {
+  if (!productPendingAction.value) return
+
+  isUpdating.value = productPendingAction.value.id
   try {
-    await apiClient(`/admin/products/${productPendingStatusChange.value.id}/status`, {
-      method: 'PATCH',
-      body: { status: productPendingStatusChange.value.nextStatus },
-    })
+    if (productPendingAction.value.action === 'delete') {
+      await apiClient(`/admin/products/${productPendingAction.value.id}`, {
+        method: 'DELETE',
+      })
+    } else {
+      await apiClient(`/admin/products/${productPendingAction.value.id}/status`, {
+        method: 'PATCH',
+        body: { status: productPendingAction.value.action },
+      })
+    }
     await fetchProducts(meta.value.page)
-    closeStatusChangeModal()
+    closeActionModal()
   } catch (error: any) {
-    alert(`Error actualizando estado: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudo completar la accion',
+      message: error.message || 'Revisa el estado del producto e intenta nuevamente.',
+      variant: 'warning',
+    }
   } finally {
     isUpdating.value = null
   }
 }
 
-const reorderProduct = async (product: ProductRow, direction: 'up' | 'down') => {
-  const currentIndex = products.value.findIndex((item) => item.id === product.id)
-  if (currentIndex === -1) return
+const pendingActionLabel = computed(() => {
+  if (!productPendingAction.value) return 'Confirmar'
+  return productPendingAction.value.action === 'delete' ? 'Eliminar producto' : 'Confirmar cambio'
+})
 
-  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-  const adjacent = products.value[targetIndex]
-  if (!adjacent) return
+const pendingActionVariant = computed(() => {
+  if (!productPendingAction.value) return 'warning'
+  return modalVariantMap[productPendingAction.value.action]
+})
 
-  isUpdating.value = product.id
-
-  try {
-    await Promise.all([
-      apiClient(`/admin/products/${product.id}/sort`, {
-        method: 'PATCH',
-        body: { sort_order: adjacent.sort_order },
-      }),
-      apiClient(`/admin/products/${adjacent.id}/sort`, {
-        method: 'PATCH',
-        body: { sort_order: product.sort_order },
-      }),
-    ])
-
-    await fetchProducts(meta.value.page)
-  } catch (error: any) {
-    alert(`Error reordenando producto: ${error.message}`)
-  } finally {
-    isUpdating.value = null
-  }
+const imageUrl = (r2Key: string | null | undefined) => {
+  if (!r2Key) return ''
+  const normalizedKey = r2Key.startsWith('public/') ? r2Key.slice('public/'.length) : r2Key
+  return `${publicAssetsBase}/${normalizedKey}`
 }
 
 onMounted(() => {
@@ -232,7 +290,7 @@ onMounted(() => {
       class="mt-4"
       :empty="products.length === 0"
       empty-message="No hay productos que coincidan con el filtro actual."
-      :colspan="8"
+      :colspan="7"
     >
       <template #head>
         <thead>
@@ -242,8 +300,6 @@ onMounted(() => {
             <th>Marca/Modelo</th>
             <th>Estado</th>
             <th>Precio</th>
-            <th>Orden</th>
-            <th>Mover</th>
             <th>Acciones</th>
           </tr>
         </thead>
@@ -252,7 +308,7 @@ onMounted(() => {
       <tr v-for="product in products" :key="product.id">
         <td>
           <div v-if="product.primary_image" class="img-preview">
-            <img :src="`https://assets.bapshop.com/${product.primary_image}`" alt="" />
+            <img :src="imageUrl(product.primary_image)" alt="" />
           </div>
           <div v-else class="img-preview empty">Sin img</div>
         </td>
@@ -275,36 +331,19 @@ onMounted(() => {
           <div class="fw-500">{{ formatPrice(product.price) }}</div>
           <div v-if="product.promo_pct" class="text-xs text-secondary">Promo {{ product.promo_pct }}%</div>
         </td>
-        <td class="text-xs text-secondary">#{{ product.sort_order }}</td>
+        
         <td class="actions-cell">
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            :disabled="isUpdating === product.id || products[0]?.id === product.id"
-            @click="reorderProduct(product, 'up')"
-          >
-            Subir
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            :disabled="isUpdating === product.id || products[products.length - 1]?.id === product.id"
-            @click="reorderProduct(product, 'down')"
-          >
-            Bajar
-          </button>
-        </td>
-        <td class="actions-cell">
-          <button type="button" class="btn btn-secondary btn-sm" @click="router.push(`/products/${product.id}/edit`)">
+          <button type="button" class="btn btn-secondary btn-sm action-edit" @click="router.push(`/products/${product.id}/edit`)">
             Editar
           </button>
           <button
-            v-for="option in transitionOptions(product.status)"
+            v-for="option in actionOptions(product.status)"
             :key="option.value"
             type="button"
             class="btn btn-sm"
+            :class="option.className"
             :disabled="isUpdating === product.id"
-            @click="requestStatusChange(product, option.value)"
+            @click="requestAction(product, option.value)"
           >
             {{ option.label }}
           </button>
@@ -321,14 +360,26 @@ onMounted(() => {
     />
 
     <BaseConfirmModal
-      :is-open="!!productPendingStatusChange"
-      title="Cambiar estado del producto"
-      :message="pendingStatusMessage"
-      confirm-label="Confirmar cambio"
-      variant="warning"
+      :is-open="!!productPendingAction"
+      :title="productPendingAction?.action === 'delete' ? 'Eliminar producto' : 'Cambiar estado del producto'"
+      :message="pendingActionMessage"
+      :confirm-label="pendingActionLabel"
+      :variant="pendingActionVariant"
       :is-loading="!!isUpdating"
-      @cancel="closeStatusChangeModal"
-      @confirm="confirmStatusChange"
+      @cancel="closeActionModal"
+      @confirm="confirmAction"
+    />
+
+    <BaseConfirmModal
+      :is-open="!!feedbackModal"
+      :title="feedbackModal?.title || 'Aviso'"
+      :message="feedbackModal?.message || ''"
+      confirm-label="Entendido"
+      cancel-label="Cerrar"
+      :variant="feedbackModal?.variant || 'neutral'"
+      single-action
+      @cancel="closeFeedbackModal"
+      @confirm="closeFeedbackModal"
     />
   </div>
 </template>
@@ -418,9 +469,43 @@ onMounted(() => {
   font-size: 0.75rem;
 }
 
+.action-edit {
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
 .actions-cell {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.btn-action-active {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  color: #d1fae5;
+}
+
+.btn-action-hidden {
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  color: #fde68a;
+}
+
+.btn-action-reserved {
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  color: #bfdbfe;
+}
+
+.btn-action-sold {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  color: #fecaca;
+}
+
+.btn-action-delete {
+  background: rgba(220, 38, 38, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  color: #fee2e2;
 }
 </style>

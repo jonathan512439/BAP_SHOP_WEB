@@ -11,9 +11,21 @@ PRAGMA foreign_keys = ON;
 -- ============================================================
 INSERT INTO settings (key, value) VALUES
   ('store_name',           'BAP Shop'),
-  ('whatsapp_number',      '5491100000000'),  -- REEMPLAZAR con número real
+  ('whatsapp_number',      '59167156258'),
   ('whatsapp_header',      'Nuevo pedido desde la tienda online'),
   ('order_expiry_minutes', '120'),
+  ('brand_logo_url',       ''),
+  ('social_facebook_url',  ''),
+  ('social_tiktok_url',    ''),
+  ('social_instagram_url', ''),
+  ('store_banner_title',   'Piezas seleccionadas, stock real'),
+  ('store_banner_text',    'Catalogo actualizado desde el panel con disponibilidad y promociones sincronizadas.'),
+  ('store_banner_image_url', ''),
+  ('store_banner_video_url', ''),
+  ('store_banner_media_type', 'image'),
+  ('admin_banner_title',   'BAP Shop Admin'),
+  ('admin_banner_text',    'Gestion centralizada de catalogo, promociones, pedidos y ajustes.'),
+  ('admin_banner_image_url', ''),
   ('catalog_version',      '1');
 
 -- ============================================================

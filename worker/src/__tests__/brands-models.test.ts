@@ -178,4 +178,46 @@ describe('Admin brands/models routes', () => {
     expect(payload.success).toBe(false)
     expect(payload.error).toContain('no encontrado')
   })
+
+  it('permite restaurar una marca archivada', async () => {
+    const response = await adminRequest(`/admin/brands/${ids.brand3}/restore`, {
+      method: 'PATCH',
+    })
+
+    const payload = await response.json<{ success: boolean }>()
+    const brand = await env.DB.prepare('SELECT is_active FROM brands WHERE id = ?').bind(ids.brand3).first<{ is_active: number }>()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(brand?.is_active).toBe(1)
+  })
+
+  it('rechaza restaurar un modelo si su marca sigue archivada', async () => {
+    await env.DB.prepare('UPDATE brands SET is_active = 0 WHERE id = ?').bind(ids.brand3).run()
+
+    const response = await adminRequest(`/admin/models/${ids.model3}/restore`, {
+      method: 'PATCH',
+    })
+
+    const payload = await response.json<{ success: boolean; error: string }>()
+
+    expect(response.status).toBe(409)
+    expect(payload.success).toBe(false)
+    expect(payload.error).toContain('Restaura la marca primero')
+  })
+
+  it('permite restaurar un modelo archivado si su marca esta activa', async () => {
+    await env.DB.prepare('UPDATE brands SET is_active = 1 WHERE id = ?').bind(ids.brand3).run()
+
+    const response = await adminRequest(`/admin/models/${ids.model3}/restore`, {
+      method: 'PATCH',
+    })
+
+    const payload = await response.json<{ success: boolean }>()
+    const model = await env.DB.prepare('SELECT is_active FROM models WHERE id = ?').bind(ids.model3).first<{ is_active: number }>()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(model?.is_active).toBe(1)
+  })
 })

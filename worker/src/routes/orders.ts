@@ -40,7 +40,8 @@ ordersRouter.post(
     const { customerName, customerPhone, turnstileToken, items } = c.req.valid('json')
 
     // 1. Verificar Turnstile
-    const turnstileOk = await verifyTurnstile(turnstileToken, c.env.TURNSTILE_SECRET)
+    const turnstileSecret = c.env.TURNSTILE_SECRET_STORE ?? c.env.TURNSTILE_SECRET
+    const turnstileOk = await verifyTurnstile(turnstileToken, turnstileSecret)
     if (!turnstileOk) {
       return c.json({ success: false, error: 'Verificación de seguridad fallida' }, 422)
     }
@@ -72,7 +73,7 @@ ordersRouter.post(
       .first<{ value: string }>()
     const expiryMinutes = parseInt(expiryRow?.value ?? '120', 10)
 
-    // 5. Crear pedido y reservar artículos (transacción atómica D1)
+    // 5. Crear pedido y dejar artículos en reserva temporal (transacción atómica D1)
     let orderId: string
     let orderCode: string
 
@@ -137,6 +138,7 @@ ordersRouter.post(
         whatsapp_number: settings.whatsapp_number,
         store_name: settings.store_name,
         whatsapp_header: settings.whatsapp_header,
+        whatsapp_template: settings.whatsapp_template,
       }
     )
 
@@ -189,14 +191,16 @@ async function getSettings(db: D1Database): Promise<{
   whatsapp_number: string
   store_name: string
   whatsapp_header: string
+  whatsapp_template: string
 }> {
   const rows = await db
-    .prepare(`SELECT key, value FROM settings WHERE key IN ('whatsapp_number','store_name','whatsapp_header')`)
+    .prepare(`SELECT key, value FROM settings WHERE key IN ('whatsapp_number','store_name','whatsapp_header','whatsapp_template')`)
     .all<{ key: string; value: string }>()
   const map = Object.fromEntries(rows.results.map((r) => [r.key, r.value]))
   return {
     whatsapp_number: map['whatsapp_number'] ?? '',
     store_name: map['store_name'] ?? 'BAP Shop',
     whatsapp_header: map['whatsapp_header'] ?? '',
+    whatsapp_template: map['whatsapp_template'] ?? '',
   }
 }

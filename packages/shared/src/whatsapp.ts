@@ -1,69 +1,76 @@
 import type { Order, OrderItem, CatalogCard } from './types'
 import { formatPrice } from './utils'
+import { DEFAULT_WHATSAPP_TEMPLATE } from './constants'
 
 // ============================================================
 // GENERADOR DE MENSAJE Y URL DE WHATSAPP
 // ============================================================
 
 export interface WhatsAppSettings {
-  whatsapp_number: string      // formato: 5491112345678 (sin + ni espacios)
+  whatsapp_number: string // formato: 5491112345678 (sin + ni espacios)
   store_name: string
-  whatsapp_header: string      // texto de cabecera personalizable
+  whatsapp_header: string // texto de cabecera personalizable
+  whatsapp_template?: string
 }
 
 /**
- * Construye el mensaje de WhatsApp para un pedido.
- * El mensaje es editable por el cliente antes de enviarlo (limitación de WhatsApp).
- * El admin siempre debe verificar el pedido por order_code en el panel.
+ * Construye un mensaje con formato tipo recibo para que el cliente lo envíe
+ * por WhatsApp y el admin lo identifique rápido en el panel.
  */
 export function buildWhatsappMessage(
   order: Pick<Order, 'order_code' | 'customer_name' | 'customer_phone' | 'subtotal' | 'discount' | 'total'>,
   items: OrderItem[],
   settings: WhatsAppSettings
 ): string {
+  const renderedItems = renderItems(items)
+  const template = settings.whatsapp_template?.trim() || DEFAULT_WHATSAPP_TEMPLATE
+  const whatsappHeader = settings.whatsapp_header?.trim() || ''
+  const discountBlock = order.discount > 0 ? `Descuento: -${formatPrice(order.discount)}` : ''
+  const headerBlock = whatsappHeader ? whatsappHeader : ''
+  const replacements = [
+    ['{{store_name}}', settings.store_name],
+    ['{{store_name_upper}}', settings.store_name.toUpperCase()],
+    ['{{whatsapp_header}}', whatsappHeader],
+    ['{{whatsapp_header_block}}', headerBlock],
+    ['{{order_code}}', order.order_code],
+    ['{{customer_name}}', order.customer_name],
+    ['{{customer_phone}}', order.customer_phone],
+    ['{{items}}', renderedItems],
+    ['{{subtotal}}', formatPrice(order.subtotal)],
+    ['{{discount}}', formatPrice(order.discount)],
+    ['{{discount_block}}', discountBlock],
+    ['{{total}}', formatPrice(order.total)],
+  ] as const
+
+  return normalizeTemplateOutput(
+    replacements.reduce((output, [token, value]) => output.split(token).join(value), template)
+  )
+}
+
+function renderItems(items: OrderItem[]): string {
   const lines: string[] = []
 
-  // Cabecera
-  lines.push(`🛍️ ${settings.store_name}${settings.whatsapp_header ? ' — ' + settings.whatsapp_header : ''}`)
-  lines.push('')
-
-  // Datos del pedido
-  lines.push(`📋 Código: #${order.order_code}`)
-  lines.push(`👤 Cliente: ${order.customer_name}`)
-  lines.push(`📞 Teléfono: ${order.customer_phone}`)
-  lines.push('')
-
-  // Productos
-  lines.push('🧾 Productos:')
-  for (const item of items) {
-    const sizeStr = item.product_size ? ` (Talla ${item.product_size})` : ''
-    if (item.promo_price !== null && item.promo_price !== item.unit_price) {
-      const discountPct = Math.round((1 - item.promo_price / item.unit_price) * 100)
-      lines.push(
-        `  • ${item.product_name}${sizeStr}`
-      )
-      lines.push(
-        `    ${formatPrice(item.unit_price)} → ${formatPrice(item.promo_price)} (${discountPct}% off)`
-      )
-    } else {
-      lines.push(`  • ${item.product_name}${sizeStr}`)
-      lines.push(`    ${formatPrice(item.unit_price)}`)
+  items.forEach((item, index) => {
+    if (index > 0) lines.push('')
+    lines.push(`${index + 1}. *${item.product_name}*`)
+    if (item.product_size) {
+      lines.push(`   Talla: ${item.product_size}`)
     }
-  }
-  lines.push('')
-
-  // Totales
-  lines.push(`💰 Subtotal: ${formatPrice(order.subtotal)}`)
-  if (order.discount > 0) {
-    lines.push(`🏷️ Descuento: −${formatPrice(order.discount)}`)
-  }
-  lines.push(`✅ Total: ${formatPrice(order.total)}`)
-  lines.push('')
-
-  // Nota para el admin
-  lines.push(`⚠️ Verificar pedido en el panel: #${order.order_code}`)
+    lines.push(`   Precio base: ${formatPrice(item.unit_price)}`)
+    if (item.promo_price !== null && item.promo_price !== item.unit_price) {
+      lines.push(`   Precio promo: ${formatPrice(item.promo_price)}`)
+    }
+    lines.push(`   Precio final: *${formatPrice(item.final_price)}*`)
+  })
 
   return lines.join('\n')
+}
+
+function normalizeTemplateOutput(message: string): string {
+  return message
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /**
@@ -71,13 +78,12 @@ export function buildWhatsappMessage(
  * Nota: el cliente puede editar el mensaje antes de enviarlo.
  */
 export function buildWhatsappUrl(phone: string, message: string): string {
-  // Limpiar el número: remover +, espacios y guiones
   const cleanPhone = phone.replace(/[\s+\-()]/g, '')
   return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
 }
 
 /**
- * Calcula el precio final de una card del catálogo considerando la promo activa.
+ * Calcula el precio final de una card del catalogo considerando la promo activa.
  */
 export function getEffectivePrice(card: CatalogCard): number {
   return card.promo_price !== null ? card.promo_price : card.price

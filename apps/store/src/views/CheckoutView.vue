@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { formatPrice, validateCustomerName, validatePhone, type InvalidCartItem } from '@bap-shop/shared'
 import BaseInput from '../components/BaseInput.vue'
 import BaseModal from '../components/BaseModal.vue'
@@ -84,9 +84,10 @@ function mountTurnstile() {
     sitekey: turnstileSiteKey,
     callback: (token: string) => {
       turnstileToken.value = token
+      errors.value.submit = ''
     },
     'error-callback': () => {
-      errors.value.submit = 'No se pudo validar la proteccion de seguridad. Recarga la pagina e intenta otra vez.'
+      errors.value.submit = 'No se pudo validar la seguridad. Revisa que Turnstile permita bab-shop.com y recarga la pagina.'
     },
     'expired-callback': () => {
       turnstileToken.value = ''
@@ -203,8 +204,16 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 <template>
   <div class="checkout-view glass-card">
     <div class="checkout-header">
-      <h2>Finalizar pedido</h2>
-      <p>Revisaremos la disponibilidad final y te enviaremos el enlace para continuar por WhatsApp.</p>
+      <h2>Coordinar compra</h2>
+      <p>
+        Esta pagina no cobra en linea. Completa tus datos y continua la coordinacion final directamente por WhatsApp con la tienda.
+      </p>
+      <p class="support-copy">
+        Antes de continuar, puedes revisar
+        <RouterLink to="/como-comprar">Como Comprar</RouterLink>,
+        <RouterLink to="/preguntas-frecuentes">Preguntas Frecuentes</RouterLink> y
+        <RouterLink to="/politicas">Politica de la Tienda</RouterLink>.
+      </p>
     </div>
 
     <div class="checkout-grid">
@@ -242,14 +251,21 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 
         <div v-if="hasUnavailableItems" class="feedback-stack">
           <div class="feedback-card danger">
-            Detectamos cambios de disponibilidad. Revisa el detalle y limpia los articulos que ya no se pueden reservar.
+            Algunos productos ya no estan disponibles. Revisa el detalle y retira los articulos que ya no se pueden comprar.
           </div>
+        </div>
+
+        <div class="feedback-card neutral" role="note">
+          Tu solicitud se enviara por WhatsApp con el resumen del pedido. La tienda te confirmara disponibilidad, forma
+          de pago, entrega o retiro antes de cerrar la venta.
         </div>
       </section>
 
       <section class="form-container">
         <h3>Datos de contacto</h3>
-        <p class="form-note">Usaremos este numero para confirmar stock, pago y coordinacion del pedido.</p>
+        <p class="form-note">
+          Usaremos este numero para confirmar stock, pago, y coordinar entrega o envio . Asegurate de ingresar un WhatsApp valido.
+        </p>
 
         <form class="checkout-form" @submit.prevent="handleSubmitOrder">
           <BaseInput
@@ -273,12 +289,12 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 
           <div id="turnstile-container" class="turnstile-box"></div>
 
-          <div v-if="errors.submit" class="global-error">
+          <div v-if="errors.submit" class="global-error" role="alert" aria-live="assertive">
             {{ errors.submit }}
           </div>
 
           <button type="submit" class="btn-primary block-button" :disabled="orderSubmitting || !turnstileToken">
-            {{ orderSubmitting ? 'Procesando pedido...' : 'Confirmar reserva' }}
+            {{ orderSubmitting ? 'Enviando solicitud...' : 'Enviar solicitud' }}
           </button>
         </form>
       </section>
@@ -308,6 +324,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   margin: 0 auto;
   padding: 2rem;
   animation: fadeUp 0.6s ease;
+  min-width: 0;
 }
 
 .checkout-header {
@@ -328,9 +345,49 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   margin: 0 auto;
 }
 
+.support-copy {
+  margin-top: 0.85rem !important;
+}
+
+.support-copy a {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+.checkout-guidance {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+@media (min-width: 860px) {
+  .checkout-guidance {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.guidance-card {
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-light);
+}
+
+.guidance-card strong {
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.guidance-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
 .checkout-grid {
   display: grid;
   gap: 2rem;
+  min-width: 0;
 }
 
 @media (min-width: 860px) {
@@ -344,6 +401,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .order-summary h3,
@@ -365,6 +423,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   padding: 0.9rem;
   border-radius: var(--radius-md);
   background: var(--bg-tertiary);
+  min-width: 0;
 }
 
 .img-thumb {
@@ -377,6 +436,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 .item-info h4 {
   font-size: 0.95rem;
   margin-bottom: 0.25rem;
+  overflow-wrap: anywhere;
 }
 
 .size {
@@ -389,6 +449,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   flex-direction: column;
   align-items: flex-end;
   gap: 0.1rem;
+  min-width: 0;
 }
 
 .base-price {
@@ -399,6 +460,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 
 .item-price {
   font-size: 0.95rem;
+  word-break: break-word;
 }
 
 .totals {
@@ -411,6 +473,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   justify-content: space-between;
   margin-bottom: 0.55rem;
   color: var(--text-secondary);
+  gap: 1rem;
 }
 
 .row.discount {
@@ -436,12 +499,21 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   padding: 1rem;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .feedback-card.danger {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.28);
   color: #fca5a5;
+}
+
+.feedback-card.neutral {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+  line-height: 1.6;
 }
 
 .form-note {
@@ -466,6 +538,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   background: rgba(239, 68, 68, 0.12);
   color: #fca5a5;
   font-size: 0.86rem;
+  overflow-wrap: anywhere;
 }
 
 .block-button {
@@ -502,6 +575,87 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   justify-content: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .checkout-view {
+    padding: 1.15rem;
+  }
+
+  .checkout-header {
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.1rem;
+  }
+
+  .checkout-header h2 {
+    font-size: 1.65rem;
+  }
+
+  .checkout-grid {
+    gap: 1.4rem;
+  }
+
+  .item-card {
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: start;
+    gap: 0.75rem;
+    padding: 0.8rem;
+  }
+
+  .img-thumb {
+    width: 48px;
+    height: 48px;
+  }
+
+  .item-info {
+    min-width: 0;
+  }
+
+  .item-info h4 {
+    font-size: 0.9rem;
+    margin-bottom: 0.2rem;
+  }
+
+  .item-price-group {
+    grid-column: 2 / -1;
+    align-items: flex-start;
+    padding-top: 0.1rem;
+  }
+
+  .totals {
+    padding-top: 1rem;
+  }
+
+  .row {
+    align-items: flex-start;
+  }
+
+  .row span:last-child {
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .turnstile-box {
+    overflow-x: auto;
+  }
+
+  .modal-list {
+    padding-left: 0;
+    list-style: none;
+  }
+
+  .modal-list li {
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
 }
 
 @keyframes fadeUp {

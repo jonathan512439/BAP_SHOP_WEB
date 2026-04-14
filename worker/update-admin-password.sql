@@ -1,0 +1,3 @@
+UPDATE admins
+SET password_hash = 'pbkdf2$6775d1f977849eb015b9276677e37317713d5c631614ff513c6c648dbb7c44f0$bb144a464f85f354d58b2a0ea4c37dc43b47bd5aab39ebdf65a1e204c8bb3aa7'
+WHERE username = 'admin';

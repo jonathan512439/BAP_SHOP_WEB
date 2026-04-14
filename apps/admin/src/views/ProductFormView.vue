@@ -15,6 +15,7 @@ import BaseConfirmModal from '../components/BaseConfirmModal.vue'
 import FormField from '../components/FormField.vue'
 import FormSelect from '../components/FormSelect.vue'
 import FormTextarea from '../components/FormTextarea.vue'
+import { formatBytes, optimizeProductImage } from '../lib/media'
 
 type ProductStatus = 'draft' | 'active' | 'hidden' | 'reserved' | 'sold'
 
@@ -39,16 +40,22 @@ interface ProductDetailResponse {
 
 interface QueuedImage {
   file: File
+  originalSize: number
   previewUrl: string
 }
+
+const MAX_SOURCE_IMAGE_SIZE_BYTES = 20 * 1024 * 1024
 
 const route = useRoute()
 const router = useRouter()
 const isEdit = route.name === 'product-edit'
 const productId = String(route.params.id ?? '')
+const publicAssetsBase =
+  import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
 
 const isLoading = ref(false)
 const isSaving = ref(false)
+const isOptimizingImages = ref(false)
 const brands = ref<Brand[]>([])
 const models = ref<Model[]>([])
 const images = ref<ProductDetailResponse['images']>([])
@@ -147,7 +154,7 @@ const localValidationErrors = computed(() => {
   return issues
 })
 
-const canSubmit = computed(() => !isSaving.value && localValidationErrors.value.length === 0)
+const canSubmit = computed(() => !isSaving.value && !isOptimizingImages.value && localValidationErrors.value.length === 0)
 
 const resetServerErrors = () => {
   formError.value = ''
@@ -221,28 +228,48 @@ const handleBrandChange = () => {
   }
 }
 
-const handleFileChange = (event: Event) => {
+const getImagePreviewUrl = (r2Key: string) => {
+  return `${publicAssetsBase}/${r2Key.replace(/^public\//, '')}`
+}
+
+const handleFileChange = async (event: Event) => {
   resetServerErrors()
 
   const target = event.target as HTMLInputElement
   if (!target.files) return
 
   const nextFiles = Array.from(target.files)
-  for (const file of nextFiles) {
-    if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
-      formError.value = `Formato no permitido: ${file.name}`
-      continue
-    }
+  isOptimizingImages.value = true
 
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      formError.value = `La imagen ${file.name} supera 5MB.`
-      continue
-    }
+  try {
+    for (const file of nextFiles) {
+      if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.type as (typeof ALLOWED_IMAGE_MIME_TYPES)[number])) {
+        formError.value = `Formato no permitido: ${file.name}`
+        continue
+      }
 
-    queuedImages.value.push({
-      file,
-      previewUrl: URL.createObjectURL(file),
-    })
+      if (file.size > MAX_SOURCE_IMAGE_SIZE_BYTES) {
+        formError.value = `La imagen ${file.name} supera 20MB y no se puede optimizar de forma segura.`
+        continue
+      }
+
+      const optimizedFile = await optimizeProductImage(file)
+
+      if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
+        formError.value = `La imagen ${file.name} sigue siendo demasiado pesada incluso despues de optimizarla.`
+        continue
+      }
+
+      queuedImages.value.push({
+        file: optimizedFile,
+        originalSize: file.size,
+        previewUrl: URL.createObjectURL(optimizedFile),
+      })
+    }
+  } catch (error: any) {
+    formError.value = error.message || 'No se pudieron optimizar las imagenes seleccionadas.'
+  } finally {
+    isOptimizingImages.value = false
   }
 
   target.value = ''
@@ -299,7 +326,7 @@ const saveProduct = async () => {
   resetServerErrors()
 
   if (localValidationErrors.value.length > 0) {
-    formError.value = 'Corrige los campos marcados antes de guardar.'
+    formError.value = 'Debes rellenar todos los datos obligatorios antes de guardar el producto.'
     return
   }
 
@@ -515,7 +542,7 @@ const setPrimaryImage = async (imgId: string) => {
         <div v-if="isEdit" class="images-manager">
           <div class="existing-images">
             <div v-for="img in images" :key="img.id" class="image-box" :class="{ primary: img.is_primary }">
-              <img :src="`https://assets.bapshop.com/${img.r2_key}`" alt="" />
+              <img :src="getImagePreviewUrl(img.r2_key)" alt="" />
               <div class="img-actions">
                 <button v-if="!img.is_primary" type="button" class="img-btn" title="Principal" @click="setPrimaryImage(img.id)">
                   Principal
@@ -532,17 +559,26 @@ const setPrimaryImage = async (imgId: string) => {
         <FormField
           class="mt-4"
           label="Subir nuevas imagenes"
-          help="Formatos permitidos: JPG, PNG, WebP. Maximo 5MB por archivo."
+          help="Formatos permitidos: JPG, PNG, WebP. Se optimizan automaticamente a WebP liviano antes de subir."
         >
-          <input type="file" multiple accept="image/jpeg,image/png,image/webp" class="form-input file-input" @change="handleFileChange" />
+          <input
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            class="form-input file-input"
+            :disabled="isOptimizingImages"
+            @change="handleFileChange"
+          />
         </FormField>
+
+        <p v-if="isOptimizingImages" class="text-secondary text-sm mt-2">Optimizando imagenes para el catalogo...</p>
 
         <div v-if="queuedImages.length > 0" class="queued-grid mt-4">
           <div v-for="(image, index) in queuedImages" :key="`${image.file.name}-${index}`" class="queued-card">
             <img :src="image.previewUrl" alt="" />
             <div class="queued-meta">
               <strong>{{ image.file.name }}</strong>
-              <span>{{ Math.round(image.file.size / 1024) }} KB</span>
+              <span>{{ formatBytes(image.originalSize) }} -> {{ formatBytes(image.file.size) }}</span>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" @click="removeQueuedImage(index)">Quitar</button>
           </div>
@@ -652,8 +688,8 @@ const setPrimaryImage = async (imgId: string) => {
 
 .image-box {
   position: relative;
-  width: 120px;
-  height: 120px;
+  width: 172px;
+  height: 172px;
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 2px solid transparent;
@@ -717,7 +753,7 @@ const setPrimaryImage = async (imgId: string) => {
 
 .queued-card img {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 1 / 1.05;
   object-fit: cover;
 }
 
@@ -763,6 +799,11 @@ const setPrimaryImage = async (imgId: string) => {
 
   .span-2 {
     grid-column: span 1;
+  }
+
+  .image-box {
+    width: 144px;
+    height: 144px;
   }
 }
 </style>

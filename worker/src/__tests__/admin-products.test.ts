@@ -11,6 +11,11 @@ describe('Admin products routes', () => {
     model: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     draftProduct: 'prod-draft',
     reservedProduct: 'prod-reserved',
+    hiddenProduct: 'prod-hidden',
+    deletableProduct: 'prod-delete',
+    soldProduct: 'prod-sold',
+    pendingDeleteProduct: 'prod-pending-delete',
+    confirmedDeleteProduct: 'prod-confirmed-delete',
   }
 
   let sessionToken = ''
@@ -91,7 +96,12 @@ describe('Admin products routes', () => {
         (id, type, status, name, model_id, size, description, price, physical_condition, reserved_order_id, reserved_until, created_at, updated_at)
        VALUES
         (?, 'sneaker', 'draft', 'Draft sin imagen', ?, '42', 'Pendiente', 45000, 'good', NULL, NULL, ?, ?),
-        (?, 'sneaker', 'reserved', 'Reservado', ?, '43', 'Reservado', 47000, 'like_new', 'order-1', ?, ?, ?)`
+        (?, 'sneaker', 'reserved', 'Reservado', ?, '43', 'Reservado', 47000, 'like_new', 'order-1', ?, ?, ?),
+        (?, 'sneaker', 'hidden', 'Oculto', ?, '44', 'Oculto', 49000, 'very_good', NULL, NULL, ?, ?),
+        (?, 'other', 'active', 'Eliminable', NULL, NULL, 'Eliminar', 15000, 'good', NULL, NULL, ?, ?),
+        (?, 'sneaker', 'sold', 'Vendido reactivable', ?, '45', 'Vendido antes', 52000, 'like_new', NULL, NULL, ?, ?),
+        (?, 'other', 'active', 'Pendiente bloqueo delete', NULL, NULL, 'Pendiente', 17000, 'good', NULL, NULL, ?, ?),
+        (?, 'other', 'sold', 'Confirmado eliminable', NULL, NULL, 'Confirmado', 19000, 'good', NULL, NULL, ?, ?)`
     ).bind(
       ids.draftProduct,
       ids.model,
@@ -101,6 +111,23 @@ describe('Admin products routes', () => {
       ids.model,
       new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       now,
+      now,
+      ids.hiddenProduct,
+      ids.model,
+      now,
+      now,
+      ids.deletableProduct,
+      now,
+      now,
+      ids.soldProduct,
+      ids.model,
+      now,
+      now,
+      ids.pendingDeleteProduct,
+      now,
+      now,
+      ids.confirmedDeleteProduct,
+      now,
       now
     ).run()
 
@@ -108,6 +135,39 @@ describe('Admin products routes', () => {
       `INSERT INTO product_images (id, product_id, r2_key, is_primary, sort_order, created_at)
        VALUES ('img-reserved', ?, 'products/prod-reserved/primary.webp', 1, 0, ?)`
     ).bind(ids.reservedProduct, now).run()
+
+    await env.DB.prepare(
+      `INSERT INTO product_images (id, product_id, r2_key, is_primary, sort_order, created_at)
+       VALUES ('img-delete', ?, 'public/products/prod-delete/primary.webp', 1, 0, ?)`
+    ).bind(ids.deletableProduct, now).run()
+
+    await env.DB.prepare(
+      `INSERT INTO product_images (id, product_id, r2_key, is_primary, sort_order, created_at)
+       VALUES ('img-sold', ?, 'public/products/prod-sold/primary.webp', 1, 0, ?)`
+    ).bind(ids.soldProduct, now).run()
+
+    await env.DB.prepare(
+      `INSERT INTO orders
+        (id, order_code, customer_name, customer_phone, status, subtotal, discount, total, notes, created_at, updated_at, expires_at)
+       VALUES
+        ('order-pending-delete', 'BAP-TEST-PENDING', 'Cliente Pendiente', '70000001', 'pending', 17000, 0, 17000, NULL, ?, ?, ?),
+        ('order-confirmed-delete', 'BAP-TEST-CONFIRMED', 'Cliente Confirmado', '70000002', 'confirmed', 19000, 0, 19000, NULL, ?, ?, ?)`
+    ).bind(
+      now,
+      now,
+      new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      now,
+      now,
+      new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    ).run()
+
+    await env.DB.prepare(
+      `INSERT INTO order_items
+        (id, order_id, product_id, product_name, product_type, product_size, unit_price, promo_price, final_price)
+       VALUES
+        ('item-pending-delete', 'order-pending-delete', ?, 'Pendiente bloqueo delete', 'other', NULL, 17000, NULL, 17000),
+        ('item-confirmed-delete', 'order-confirmed-delete', ?, 'Confirmado eliminable', 'other', NULL, 19000, NULL, 19000)`
+    ).bind(ids.pendingDeleteProduct, ids.confirmedDeleteProduct).run()
   })
 
   afterAll(async () => {
@@ -175,5 +235,98 @@ describe('Admin products routes', () => {
       reserved_order_id: null,
       reserved_until: null,
     })
+  })
+
+  it('permite reservar manualmente un producto oculto sin asociarlo a un pedido', async () => {
+    const response = await adminRequest(`/admin/products/${ids.hiddenProduct}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status: 'reserved' }),
+    })
+
+    const payload = await response.json<{ success: boolean; data?: { status: string } }>()
+    const product = await env.DB.prepare(
+      'SELECT status, reserved_order_id, reserved_until FROM products WHERE id = ?'
+    ).bind(ids.hiddenProduct).first<{
+      status: string
+      reserved_order_id: string | null
+      reserved_until: string | null
+    }>()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.status).toBe('reserved')
+    expect(product).toMatchObject({
+      status: 'reserved',
+      reserved_order_id: null,
+      reserved_until: null,
+    })
+  })
+
+  it('permite reactivar un producto vendido cuando fue marcado por error', async () => {
+    const response = await adminRequest(`/admin/products/${ids.soldProduct}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status: 'active' }),
+    })
+
+    const payload = await response.json<{ success: boolean; data?: { status: string } }>()
+    const product = await env.DB.prepare('SELECT status FROM products WHERE id = ?')
+      .bind(ids.soldProduct)
+      .first<{ status: string }>()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.status).toBe('active')
+    expect(product?.status).toBe('active')
+  })
+
+  it('elimina un producto sin pedidos abiertos y borra sus imagenes asociadas', async () => {
+    const response = await adminRequest(`/admin/products/${ids.deletableProduct}`, {
+      method: 'DELETE',
+    })
+
+    const payload = await response.json<{ success: boolean; data?: { id: string } }>()
+    const product = await env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(ids.deletableProduct).first()
+    const image = await env.DB.prepare('SELECT id FROM product_images WHERE product_id = ?').bind(ids.deletableProduct).first()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.id).toBe(ids.deletableProduct)
+    expect(product).toBeNull()
+    expect(image).toBeNull()
+  })
+
+  it('rechaza eliminar un producto con pedido pendiente y devuelve una guia util', async () => {
+    const response = await adminRequest(`/admin/products/${ids.pendingDeleteProduct}`, {
+      method: 'DELETE',
+    })
+
+    const payload = await response.json<{ success: boolean; error: string }>()
+
+    expect(response.status).toBe(409)
+    expect(payload.success).toBe(false)
+    expect(payload.error).toContain('pedido pendiente')
+    expect(payload.error).toContain('oculto')
+  })
+
+  it('permite eliminar un producto ligado solo a pedidos confirmados', async () => {
+    const response = await adminRequest(`/admin/products/${ids.confirmedDeleteProduct}`, {
+      method: 'DELETE',
+    })
+
+    const payload = await response.json<{ success: boolean; data?: { id: string } }>()
+    const product = await env.DB.prepare('SELECT id FROM products WHERE id = ?')
+      .bind(ids.confirmedDeleteProduct)
+      .first()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.id).toBe(ids.confirmedDeleteProduct)
+    expect(product).toBeNull()
   })
 })

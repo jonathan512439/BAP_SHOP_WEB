@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatPrice } from '@bap-shop/shared'
 import { apiClient } from '../api/client'
+import { useBrandingStore } from '../stores/branding'
 
 interface DashboardOrder {
   id: string
@@ -23,6 +24,7 @@ interface DashboardAudit {
 }
 
 const router = useRouter()
+const brandingStore = useBrandingStore()
 const isLoading = ref(true)
 const summary = ref({
   pendingOrders: 0,
@@ -66,8 +68,16 @@ const cards = computed(() => [
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+const fallbackLogoSrc = '/brand/bap-logo.svg'
+const brandLogoSrc = computed(() => brandingStore.branding.brand_logo_url || fallbackLogoSrc)
+const adminBannerTitle = computed(() => brandingStore.branding.admin_banner_title || 'BAP Shop Admin')
+const adminBannerText = computed(() => (
+  brandingStore.branding.admin_banner_text ||
+  'Gestion centralizada de catalogo, promociones, pedidos y ajustes.'
+))
 
 onMounted(async () => {
+  brandingStore.loadBranding()
   isLoading.value = true
 
   try {
@@ -104,6 +114,21 @@ onMounted(async () => {
 
 <template>
   <div class="dashboard-view">
+    <section class="brand-banner admin-card">
+      <img
+        v-if="brandingStore.branding.admin_banner_image_url"
+        :src="brandingStore.branding.admin_banner_image_url"
+        :alt="adminBannerTitle"
+        class="brand-banner-image"
+      />
+      <img :src="brandLogoSrc" alt="BAP Shop" class="brand-banner-logo" />
+      <div>
+        <p class="brand-kicker">Marca activa</p>
+        <h2>{{ adminBannerTitle }}</h2>
+        <p class="brand-copy">{{ adminBannerText }}</p>
+      </div>
+    </section>
+
     <div class="stats-grid">
       <div v-for="card in cards" :key="card.title" class="stat-card admin-card">
         <h3>{{ card.title }}</h3>
@@ -177,6 +202,53 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.brand-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr);
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid rgba(245, 158, 11, 0.16);
+}
+
+.brand-banner-image {
+  width: 100%;
+  min-height: 140px;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 18px;
+  border: 1px solid var(--border-light);
+}
+
+.brand-banner-logo {
+  width: clamp(88px, 11vw, 132px);
+  height: auto;
+  object-fit: contain;
+}
+
+.brand-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--accent-primary);
+}
+
+.brand-banner h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.4rem;
+}
+
+.brand-copy {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -199,6 +271,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-height: 172px;
 }
 
 .stat-card h3 {
@@ -290,5 +363,68 @@ onMounted(async () => {
 
 .mt-4 {
   margin-top: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .brand-banner {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+  }
+
+  .stat-card {
+    min-height: auto;
+    gap: 0.55rem;
+    padding: 0.95rem;
+  }
+
+  .stat-card h3 {
+    font-size: 0.78rem;
+    line-height: 1.25;
+  }
+
+  .stat-value {
+    font-size: 1.55rem;
+  }
+
+  .dashboard-grid {
+    gap: 1rem;
+  }
+
+  .section-header {
+    margin-bottom: 0.75rem;
+  }
+
+  .list-row {
+    padding: 0.72rem 0.8rem;
+    gap: 0.75rem;
+  }
+
+  .list-row strong {
+    font-size: 0.84rem;
+  }
+
+  .list-row p,
+  .row-meta,
+  .row-meta small {
+    font-size: 0.74rem;
+  }
+
+  .btn-sm {
+    padding: 0.25rem 0.45rem;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 560px) {
+  .section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 </style>

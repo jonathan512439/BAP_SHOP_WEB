@@ -36,8 +36,9 @@ describe('Catalog Builder', () => {
        VALUES
         ('prod-1', 'sneaker', 'active', 'Nike Air Force 1 Low', 'model-1', '42', 'Descripcion', 45000, 'like_new', 3, ?, ?),
         ('prod-2', 'other', 'active', 'Bolso deportivo', NULL, NULL, 'Bolso', 18000, 'good', 7, ?, ?),
-        ('prod-3', 'other', 'hidden', 'Borrado oculto', NULL, NULL, 'No visible', 10000, 'good', 9, ?, ?)`
-    ).bind(now, now, now, now, now, now).run()
+        ('prod-3', 'other', 'sold', 'Bandolera agotada', NULL, NULL, 'No disponible', 12000, 'good', 8, ?, ?),
+        ('prod-4', 'other', 'hidden', 'Borrado oculto', NULL, NULL, 'No visible', 10000, 'good', 9, ?, ?)`
+    ).bind(now, now, now, now, now, now, now, now).run()
 
     await env.DB.prepare(
       `INSERT INTO product_images
@@ -45,8 +46,9 @@ describe('Catalog Builder', () => {
        VALUES
         ('img-1', 'prod-1', 'products/prod-1/primary.webp', 1, 0, ?),
         ('img-2', 'prod-1', 'products/prod-1/secondary.webp', 0, 1, ?),
-        ('img-3', 'prod-2', 'products/prod-2/primary.webp', 1, 0, ?)`
-    ).bind(now, now, now).run()
+        ('img-3', 'prod-2', 'products/prod-2/primary.webp', 1, 0, ?),
+        ('img-4', 'prod-3', 'products/prod-3/primary.webp', 1, 0, ?)`
+    ).bind(now, now, now, now).run()
 
     await env.DB.prepare(
       `INSERT INTO product_promotions
@@ -69,16 +71,18 @@ describe('Catalog Builder', () => {
     const indexObject = await env.R2.get('public/catalog/index.json')
     const filtersObject = await env.R2.get('public/catalog/filters.json')
     const detailObject = await env.R2.get('public/products/prod-1.json')
-    const hiddenDetailObject = await env.R2.get('public/products/prod-3.json')
+    const soldDetailObject = await env.R2.get('public/products/prod-3.json')
+    const hiddenDetailObject = await env.R2.get('public/products/prod-4.json')
 
     expect(manifestObject).not.toBeNull()
     expect(indexObject).not.toBeNull()
     expect(filtersObject).not.toBeNull()
     expect(detailObject).not.toBeNull()
+    expect(soldDetailObject).not.toBeNull()
     expect(hiddenDetailObject).toBeNull()
 
     const manifest = await manifestObject!.json<{ catalog_version: number; total_products: number }>()
-    const index = await indexObject!.json<Array<{ id: string; promo_price: number | null; discount_pct: number | null }>>()
+    const index = await indexObject!.json<Array<{ id: string; status: string; promo_price: number | null; discount_pct: number | null }>>()
     const filters = await filtersObject!.json<{
       brands: Array<{ id: string; name: string; slug: string }>
       models: Array<{ id: string; brand_id: string; name: string; slug: string }>
@@ -92,11 +96,18 @@ describe('Catalog Builder', () => {
     }>()
 
     expect(manifest.catalog_version).toBe(2)
-    expect(manifest.total_products).toBe(2)
-    expect(index).toHaveLength(2)
+    expect(manifest.total_products).toBe(3)
+    expect(index).toHaveLength(3)
+    expect(index.map((item) => item.id)).toEqual(['prod-1', 'prod-2', 'prod-3'])
     expect(index.find((item) => item.id === 'prod-1')).toMatchObject({
+      status: 'active',
       promo_price: 36000,
       discount_pct: 20,
+    })
+    expect(index.find((item) => item.id === 'prod-3')).toMatchObject({
+      status: 'sold',
+      promo_price: null,
+      discount_pct: null,
     })
     expect(filters.brands).toEqual([{ id: 'brand-1', name: 'Nike', slug: 'nike' }])
     expect(filters.models).toEqual([{ id: 'model-1', brand_id: 'brand-1', name: 'Air Force 1', slug: 'air-force-1' }])
@@ -104,6 +115,6 @@ describe('Catalog Builder', () => {
     expect(detail.id).toBe('prod-1')
     expect(detail.promo_price).toBe(36000)
     expect(detail.images[0]?.is_primary).toBe(true)
-    expect(detail.images[0]?.url).toContain('https://assets.bapshop.com/products/prod-1/primary.webp')
+    expect(detail.images[0]?.url).toContain('https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/products/prod-1/primary.webp')
   })
 })

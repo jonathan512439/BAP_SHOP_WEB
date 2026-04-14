@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { PRODUCT_TYPE, type CatalogCard, type CatalogFilters, type ProductType } from '@bap-shop/shared'
+import { PRODUCT_TYPE, type CatalogCard, type CatalogFilters, type CatalogManifest, type ProductType } from '@bap-shop/shared'
 
-const ASSETS_DOMAIN = import.meta.env.VITE_ASSETS_URL || 'https://assets.bapshop.com/public'
+const ASSETS_DOMAIN =
+  import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
 
 export const useCatalogStore = defineStore('catalog', () => {
   const isLoaded = ref(false)
@@ -18,8 +19,8 @@ export const useCatalogStore = defineStore('catalog', () => {
   const selectedCondition = ref<string>('')
   const selectedSize = ref<string>('')
   
-  const fetchCatalog = async (force = false) => {
-    if ((isLoaded.value && !force) || isLoading.value) return
+  const fetchCatalog = async () => {
+    if (isLoading.value) return
     
     isLoading.value = true
     error.value = null
@@ -28,13 +29,13 @@ export const useCatalogStore = defineStore('catalog', () => {
       // 1. Fetch manifest.json to check catalog version
       const manifestRes = await fetch(`${ASSETS_DOMAIN}/manifest.json`)
       if (!manifestRes.ok) throw new Error('Error al verificar versión del catálogo')
-      const manifest = await manifestRes.json<{ catalog_version: number; total_products: number }>()
+      const manifest = (await manifestRes.json()) as CatalogManifest
 
       const localVersion = sessionStorage.getItem('bap_catalog_version')
       const localProducts = sessionStorage.getItem('bap_catalog_index')
       const localFilters = sessionStorage.getItem('bap_catalog_filters')
 
-      // 2. Compare versions, if same and local storage exists, load from memory
+      // 2. Compare versions, if same and local storage exists, load from session cache
       if (localVersion === String(manifest.catalog_version) && localProducts && localFilters) {
         products.value = JSON.parse(localProducts)
         filters.value = JSON.parse(localFilters)

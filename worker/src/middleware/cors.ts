@@ -12,10 +12,15 @@ export const corsMiddleware = (): MiddlewareHandler<HonoEnv> => {
   return async (c, next) => {
     const origin = c.req.header('Origin') ?? ''
     const isProd = c.env.ENVIRONMENT === 'production'
+    const productionOrigins = [`https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
+
+    if (isProd && !c.env.STORE_DOMAIN.startsWith('www.')) {
+      productionOrigins.push(`https://www.${c.env.STORE_DOMAIN}`)
+    }
 
     const allowedOrigins = isProd
-      ? [`https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
-      : [...ALLOWED_ORIGINS_DEV, `https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
+      ? productionOrigins
+      : [...ALLOWED_ORIGINS_DEV, ...productionOrigins]
 
     const isAllowed = allowedOrigins.includes(origin)
 

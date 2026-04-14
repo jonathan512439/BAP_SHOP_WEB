@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { nowISO } from '@bap-shop/shared'
 import { handleScheduled } from '../cron'
+import { createOrderTransaction } from '../lib/orders'
 import { cleanupTestDb, setupTestDb } from './setup'
 
 describe('Orders and scheduled jobs', () => {
@@ -56,7 +57,7 @@ describe('Orders and scheduled jobs', () => {
   })
 
   it('expira solo pedidos pending vencidos y libera sus productos', async () => {
-    await handleScheduled('*/15 * * * *', env)
+    await handleScheduled('*/5 * * * *', env)
 
     const expiredOrder = await env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind('order-expired').first<{ status: string }>()
     const pendingOrder = await env.DB.prepare('SELECT status FROM orders WHERE id = ?').bind('order-pending').first<{ status: string }>()
@@ -80,15 +81,60 @@ describe('Orders and scheduled jobs', () => {
     })
   })
 
+  it('crea pedidos pending y deja el producto en reserved hasta confirmacion admin', async () => {
+    const now = nowISO()
+    await env.DB.prepare(
+      `INSERT INTO products
+        (id, type, status, name, price, physical_condition, reserved_order_id, reserved_until, created_at, updated_at)
+       VALUES
+        ('prod-new-order', 'sneaker', 'active', 'Producto nuevo', 41000, 'like_new', NULL, NULL, ?, ?)`
+    ).bind(now, now).run()
+
+    const result = await createOrderTransaction(env.DB, {
+      customerName: 'Cliente Reserva',
+      customerPhone: '70000003',
+      items: [
+        {
+          productId: 'prod-new-order',
+          productName: 'Producto nuevo',
+          productType: 'sneaker',
+          productSize: '42',
+          unitPrice: 41000,
+          promoPrice: null,
+          finalPrice: 41000,
+        },
+      ],
+      subtotal: 41000,
+      discount: 0,
+      total: 41000,
+      expiryMinutes: 20,
+    })
+
+    const createdOrder = await env.DB.prepare(
+      'SELECT status, expires_at FROM orders WHERE id = ?'
+    ).bind(result.orderId).first<{ status: string; expires_at: string }>()
+    const reservedProduct = await env.DB.prepare(
+      'SELECT status, reserved_order_id, reserved_until FROM products WHERE id = ?'
+    ).bind('prod-new-order').first<{ status: string; reserved_order_id: string | null; reserved_until: string | null }>()
+
+    expect(createdOrder?.status).toBe('pending')
+    expect(createdOrder?.expires_at).toBe(result.expiresAt)
+    expect(reservedProduct).toMatchObject({
+      status: 'reserved',
+      reserved_order_id: result.orderId,
+      reserved_until: result.expiresAt,
+    })
+  })
+
   it('deshabilita promociones vencidas y genera backup semanal', async () => {
-    await handleScheduled('0 * * * *', env)
+    await handleScheduled('*/5 * * * *', env)
 
     const promo = await env.DB.prepare(
       'SELECT enabled FROM product_promotions WHERE product_id = ?'
     ).bind('prod-catalog').first<{ enabled: number }>()
     expect(promo?.enabled).toBe(0)
 
-    await handleScheduled('0 4 * * 0', env)
+    await handleScheduled('0 4 * * SUN', env)
 
     const backupDate = nowISO().slice(0, 10)
     const backupObject = await env.R2.get(`backups/${backupDate}.json`)

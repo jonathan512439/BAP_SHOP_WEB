@@ -7,6 +7,8 @@
     "dev": "wrangler dev --local",
     "deploy": "wrangler deploy",
     "build": "tsc --noEmit",
+    "hash-password": "node ./scripts/hash-password.mjs",
+    "verify-password": "node ./scripts/verify-password.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

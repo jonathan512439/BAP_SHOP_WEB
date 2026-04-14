@@ -11,6 +11,7 @@ import { applyDiscount } from '@bap-shop/shared'
 interface RawProductForSnapshot {
   id: string
   type: 'sneaker' | 'other'
+  status: 'active' | 'sold'
   name: string
   model_id: string | null
   model_name: string | null
@@ -49,11 +50,11 @@ export async function rebuildCatalogSnapshots(
 ): Promise<void> {
   const now = nowISO()
 
-  // 1. Obtener todos los productos activos con JOIN de modelo/marca y promo
+  // 1. Obtener todos los productos visibles en tienda con JOIN de modelo/marca y promo
   const productsResult = await db
     .prepare(
       `SELECT
-        p.id, p.type, p.name, p.model_id, p.size,
+        p.id, p.type, p.status, p.name, p.model_id, p.size,
         p.description, p.characteristics, p.price,
         p.physical_condition, p.sort_order,
         m.name        AS model_name,
@@ -69,14 +70,17 @@ export async function rebuildCatalogSnapshots(
        LEFT JOIN models m  ON m.id = p.model_id
        LEFT JOIN brands b  ON b.id = m.brand_id
        LEFT JOIN product_promotions pp ON pp.product_id = p.id
-       WHERE p.status = 'active'
-       ORDER BY p.sort_order ASC, p.created_at DESC, p.id ASC`
+       WHERE p.status IN ('active', 'sold')
+       ORDER BY CASE WHEN p.status = 'sold' THEN 1 ELSE 0 END ASC,
+                p.sort_order ASC,
+                p.created_at DESC,
+                p.id ASC`
     )
     .all<RawProductForSnapshot>()
 
   const products = productsResult.results
 
-  // 2. Obtener todas las imágenes de los productos activos
+  // 2. Obtener todas las imágenes de los productos visibles
   const productIds = products.map((p) => p.id)
   let allImages: RawImage[] = []
 
@@ -120,6 +124,7 @@ export async function rebuildCatalogSnapshots(
     return {
       id: p.id,
       type: p.type,
+      status: p.status,
       name: p.name,
       brand: p.brand_id ? { id: p.brand_id, name: p.brand_name!, slug: p.brand_slug! } : undefined,
       model: p.model_id ? { id: p.model_id, name: p.model_name! } : undefined,
@@ -171,6 +176,7 @@ export async function rebuildCatalogSnapshots(
     const detail: CatalogProductDetail = {
       id: p.id,
       type: p.type,
+      status: p.status,
       name: p.name,
       brand: p.brand_id ? { id: p.brand_id, name: p.brand_name!, slug: p.brand_slug! } : undefined,
       model: p.model_id ? { id: p.model_id, name: p.model_name! } : undefined,
@@ -225,3 +231,22 @@ export async function rebuildCatalogSnapshots(
       .run(),
   ])
 }
+
+
+/*    Prompt arreglo general
+    Soluciona estos problemas de la mejor manera para tener un sistema robuzto , mantenible y escalable.
+Si alguno compromete el sistema dimelo y buscaremos la mejor solucion.
+
+sold y recién después inserta orders/order_items; si el worker cae entre ambos awaits, puedes dejar stock vendido sin pedido asociado.
+
+Alta: el flujo de negocio quedó incoherente tras pasar checkout a confirmed/sold inmediato. Siguen existiendo pending, reserved, expires_at, order_expiry_minutes y un cron de expiración que ya casi no participa en el flujo real.
+
+Alta: guardas ip_address y user_agent en sesión, pero no los validas nunca al autenticar. Si alguien roba una cookie bap_session, puede reutilizarla desde otro navegador/IP hasta su vencimiento.
+
+Media-Alta: los snapshots de detalle de producto no se limpian cuando un producto deja de estar activo. El catálogo solo reescribe (solo si es posible sin comprometer el resto de las funciones del sistema)
+
+la CSP y headers de seguridad del worker pueden dar una falsa sensación de cobertura. Protegen respuestas del API, pero tus frontends corren en Pages bajo otro origen; si no configuras headers equivalentes allí, store y admin quedan sin esa política. 
+
+
+Alta: el rebuild del catálogo es síncrono y completo ante casi cualquier mutación relevante: pedidos, promociones, activaciones, cambios de imágenes y sort. Eso acopla latencia de escritura con O(n) lecturas de D1 y O(n) escrituras a R2; hoy sirve para catálogo pequeño, pero no escala bien. 
+*/

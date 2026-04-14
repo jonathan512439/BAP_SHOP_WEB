@@ -7,6 +7,7 @@ defineProps<{
   cancelLabel?: string
   variant?: 'danger' | 'warning' | 'neutral'
   isLoading?: boolean
+  singleAction?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,7 +25,13 @@ const emit = defineEmits<{
       </div>
 
       <div class="modal-actions">
-        <button type="button" class="btn btn-secondary" :disabled="isLoading" @click="emit('cancel')">
+        <button
+          v-if="!singleAction"
+          type="button"
+          class="btn btn-secondary"
+          :disabled="isLoading"
+          @click="emit('cancel')"
+        >
           {{ cancelLabel || 'Cancelar' }}
         </button>
         <button

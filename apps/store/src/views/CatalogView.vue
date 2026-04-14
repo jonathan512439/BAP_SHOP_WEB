@@ -1,62 +1,70 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { PRODUCT_TYPE, type ProductType } from '@bap-shop/shared'
+import { PRODUCT_STATUS, PRODUCT_TYPE, type ProductType } from '@bap-shop/shared'
 import BaseEmptyState from '../components/BaseEmptyState.vue'
 import BasePagination from '../components/BasePagination.vue'
 import ProductCard from '../components/ProductCard.vue'
 import FilterPanel from '../components/FilterPanel.vue'
 import { useCatalogStore } from '../stores/catalog'
+import { useBrandingStore } from '../stores/branding'
 import { useFilters } from '../composables/useFilters'
 
 const route = useRoute()
 const catalogStore = useCatalogStore()
-const ITEMS_PER_PAGE = 12
+const brandingStore = useBrandingStore()
+const ITEMS_PER_PAGE = 10
 
 const categoryType = computed<ProductType>(() => {
   return route.name === 'others' ? PRODUCT_TYPE.OTHER : PRODUCT_TYPE.SNEAKER
 })
 
 const categoryTitle = computed(() => {
-  return categoryType.value === PRODUCT_TYPE.SNEAKER ? 'Zapatillas seleccionadas' : 'Otros hallazgos'
+  return categoryType.value === PRODUCT_TYPE.SNEAKER ? 'Zapatillas disponibles' : 'Accesorios y complementos'
 })
 
 const categoryDescription = computed(() => {
   return categoryType.value === PRODUCT_TYPE.SNEAKER
-    ? 'Modelos curados, tallas visibles y disponibilidad sincronizada con el stock real.'
-    : 'Accesorios y piezas complementarias publicadas desde el panel con snapshot publico.'
+    ? 'Descubre pares disponibles en nuestra tineda BAP Shop.'
+    : 'Encuentra articulos complementarios seleccionados para tu estilo.'
 })
+
 const showBrandFilters = computed(() => categoryType.value === PRODUCT_TYPE.SNEAKER)
+
 const { currentPage, visibleProducts, totalPages, paginatedProducts, applyRouteFilters, clearFilters, goToPage } =
   useFilters(categoryType, ITEMS_PER_PAGE)
 
+const availableCount = computed(() => visibleProducts.value.filter((product) => product.status !== PRODUCT_STATUS.SOLD).length)
+
+
+
 onMounted(() => {
+  brandingStore.loadBranding()
   applyRouteFilters()
   catalogStore.fetchCatalog()
 })
 </script>
 
 <template>
-  <section class="catalog-view">
+  <section class="catalog-view" :aria-busy="catalogStore.isLoading">
     <div class="hero">
       <div>
-        <p class="eyebrow">Catalogo publico</p>
+        <p class="eyebrow">BAP Shop | Oruro - Bolivia</p>
         <h1 class="title">{{ categoryTitle }}</h1>
         <p class="subtitle">{{ categoryDescription }}</p>
       </div>
       <div class="hero-meta glass-card">
         <span class="meta-label">Disponibles ahora</span>
-        <strong class="meta-value">{{ visibleProducts.length }}</strong>
-        <span class="meta-caption">{{ paginatedProducts.length }} visibles en esta pagina</span>
+        <strong class="meta-value">{{ availableCount }} articulos</strong>
       </div>
     </div>
-
+    
     <FilterPanel :show-brand-filters="showBrandFilters" @clear="clearFilters" />
-
+    
     <BaseEmptyState
       v-if="catalogStore.isLoading"
-      title="Cargando catalogo..."
-      description="Estamos leyendo el ultimo snapshot publico disponible."
+      title="Cargando productos..."
+      description="Estamos preparando el listado mas reciente para ti."
       loading
     />
 
@@ -65,7 +73,7 @@ onMounted(() => {
       title="No se pudo cargar el catalogo"
       :description="catalogStore.error"
       action-label="Reintentar"
-      @action="catalogStore.fetchCatalog(true)"
+      @action="catalogStore.fetchCatalog()"
     />
 
     <BaseEmptyState
@@ -74,7 +82,7 @@ onMounted(() => {
       description="Prueba limpiando marca, modelo, talla o condicion para ver mas productos."
     />
 
-    <div v-else class="product-grid">
+    <div v-else class="product-grid" role="list" aria-label="Productos del catalogo">
       <ProductCard v-for="product in paginatedProducts" :key="product.id" :product="product" />
     </div>
 
@@ -158,5 +166,4 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.5rem;
 }
-
 </style>

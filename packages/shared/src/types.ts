@@ -137,6 +137,7 @@ export interface ProductWithDetails extends Product {
 export interface CatalogCard {
   id: string
   type: ProductType
+  status: ProductStatus
   name: string
   brand?: { id: string; name: string; slug: string }
   model?: { id: string; name: string }
@@ -153,6 +154,7 @@ export interface CatalogCard {
 export interface CatalogProductDetail {
   id: string
   type: ProductType
+  status: ProductStatus
   name: string
   brand?: { id: string; name: string; slug: string }
   model?: { id: string; name: string }
@@ -179,6 +181,22 @@ export interface CatalogManifest {
   catalog_version: number
   generated_at: string
   total_products: number
+}
+
+export interface PublicBrandingSettings {
+  store_name: string
+  brand_logo_url: string
+  social_facebook_url: string
+  social_tiktok_url: string
+  social_instagram_url: string
+  store_banner_title: string
+  store_banner_text: string
+  store_banner_image_url: string
+  store_banner_video_url: string
+  store_banner_media_type: 'image' | 'video'
+  admin_banner_title: string
+  admin_banner_text: string
+  admin_banner_image_url: string
 }
 
 // ============================================================

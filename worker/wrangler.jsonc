@@ -31,8 +31,7 @@
   },
   "triggers": {
     "crons": [
-      "*/15 * * * *",
-      "0 * * * *",
+      "*/5 * * * *",
       "0 3 * * *",
       "0 4 * * SUN"
     ]
@@ -41,9 +40,9 @@
     "production": {
       "vars": {
         "ENVIRONMENT": "production",
-        "STORE_DOMAIN": "bap-shop-store.pages.dev",
-        "ADMIN_DOMAIN": "bap-shop-admin.pages.dev",
-        "R2_PUBLIC_DOMAIN": "pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
+        "STORE_DOMAIN": "bab-shop.com",
+        "ADMIN_DOMAIN": "admin.bab-shop.com",
+        "R2_PUBLIC_DOMAIN": "api.bab-shop.com"
       },
       "d1_databases": [
         {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiClient } from '../src/api/client'
+import { ApiError, apiClient, setCsrfToken } from '../src/api/client'
 
 describe('apiClient', () => {
   beforeEach(() => {
@@ -14,6 +14,11 @@ describe('apiClient', () => {
     Object.defineProperty(globalThis, 'window', {
       value: {
         dispatchEvent: vi.fn(),
+        sessionStorage: {
+          getItem: vi.fn(() => null),
+          setItem: vi.fn(),
+          removeItem: vi.fn(),
+        },
       },
       configurable: true,
       writable: true,
@@ -25,6 +30,8 @@ describe('apiClient', () => {
   })
 
   it('serializa params y body JSON, incluyendo CSRF en mutaciones', async () => {
+    setCsrfToken('stored-csrf-token')
+
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ success: true, data: { ok: true } }), {
         status: 200,
@@ -57,7 +64,7 @@ describe('apiClient', () => {
     const headers = config?.headers as Headers
     expect(headers.get('Accept')).toBe('application/json')
     expect(headers.get('Content-Type')).toBe('application/json')
-    expect(headers.get('X-CSRF-Token')).toBe('test-csrf-token')
+    expect(headers.get('X-CSRF-Token')).toBe('stored-csrf-token')
     expect(config?.body).toBe(JSON.stringify({ store_name: 'BAP Shop' }))
   })
 

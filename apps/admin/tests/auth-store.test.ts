@@ -18,6 +18,8 @@ vi.mock('../src/api/client', () => ({
     }
   },
   apiClient: (...args: unknown[]) => apiClientMock(...args),
+  setCsrfToken: vi.fn(),
+  clearCsrfToken: vi.fn(),
 }))
 
 describe('auth store', () => {
@@ -35,6 +37,7 @@ describe('auth store', () => {
       data: {
         adminId: 'admin-1',
         username: 'admin',
+        csrfToken: 'csrf-token',
       },
     })
 
@@ -67,6 +70,7 @@ describe('auth store', () => {
       data: {
         adminId: 'admin-1',
         username: 'admin',
+        csrfToken: 'csrf-token',
       },
     })
 

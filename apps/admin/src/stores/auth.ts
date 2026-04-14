@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { apiClient } from '../api/client'
+import { apiClient, clearCsrfToken, setCsrfToken } from '../api/client'
 export const useAuthStore = defineStore('auth', () => {
   const adminId = ref<string | null>(null)
   const username = ref<string | null>(null)
@@ -11,25 +11,28 @@ export const useAuthStore = defineStore('auth', () => {
   const checkSession = async () => {
     isInitializing.value = true
     try {
-      const { data } = await apiClient<{ data: { adminId: string, username: string } }>('/auth/me')
+      const { data } = await apiClient<{ data: { adminId: string, username: string, csrfToken: string } }>('/auth/me')
       adminId.value = data.adminId
       username.value = data.username
+      setCsrfToken(data.csrfToken)
     } catch {
       adminId.value = null
       username.value = null
+      clearCsrfToken()
     } finally {
       isInitializing.value = false
     }
   }
 
   const login = async (user: string, pass: string, turnstileToken: string) => {
-    const { data } = await apiClient<{ data: { adminId: string, username: string } }>('/auth/login', {
+    const { data } = await apiClient<{ data: { adminId: string, username: string, csrfToken: string } }>('/auth/login', {
       method: 'POST',
       body: { username: user, password: pass, turnstileToken } as any
     })
     
     adminId.value = data.adminId
     username.value = data.username
+    setCsrfToken(data.csrfToken)
   }
 
   const logout = async () => {
@@ -40,12 +43,14 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       adminId.value = null
       username.value = null
+      clearCsrfToken()
     }
   }
 
   const reset = () => {
     adminId.value = null
     username.value = null
+    clearCsrfToken()
   }
 
   return {

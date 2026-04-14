@@ -36,6 +36,7 @@ export const authMiddleware = (): MiddlewareHandler<HonoEnv> => {
     }
 
     // Inyectar datos del admin en el contexto
+    c.set('sessionId', row.id)
     c.set('adminId', row.admin_id)
     c.set('adminUsername', row.username)
     c.set('csrfToken', row.csrf_token)

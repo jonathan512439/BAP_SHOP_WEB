@@ -1,8 +1,38 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
+const CSRF_STORAGE_KEY = 'bap_admin_csrf'
 
 function getCsrfToken(): string | null {
+  const stored = readStoredCsrfToken()
+  if (stored) {
+    return stored
+  }
+
   const match = document.cookie.match(new RegExp('(^| )bap_csrf=([^;]+)'))
   return match ? match[2] : null
+}
+
+function readStoredCsrfToken(): string | null {
+  try {
+    return window.sessionStorage.getItem(CSRF_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export function setCsrfToken(token: string | null) {
+  try {
+    if (token) {
+      window.sessionStorage.setItem(CSRF_STORAGE_KEY, token)
+    } else {
+      window.sessionStorage.removeItem(CSRF_STORAGE_KEY)
+    }
+  } catch {
+    // Ignorar errores de almacenamiento; el fallback por cookie cubre same-origin.
+  }
+}
+
+export function clearCsrfToken() {
+  setCsrfToken(null)
 }
 
 type JsonBody = Record<string, unknown> | unknown[]

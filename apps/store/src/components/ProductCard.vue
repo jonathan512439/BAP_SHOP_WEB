@@ -2,8 +2,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { CatalogCard } from '@bap-shop/shared'
-import { formatPrice } from '@bap-shop/shared'
-import { PHYSICAL_CONDITION_LABELS } from '@bap-shop/shared'
+import { formatPrice, PHYSICAL_CONDITION_LABELS, PRODUCT_STATUS } from '@bap-shop/shared'
 import { useCartStore } from '../stores/cart'
 
 const props = defineProps<{
@@ -17,20 +16,40 @@ const conditionLabel = computed(() => {
   return PHYSICAL_CONDITION_LABELS[props.product.physical_condition] || props.product.physical_condition
 })
 
+const isSold = computed(() => props.product.status === PRODUCT_STATUS.SOLD)
 const inCart = computed(() => cartStore.isInCart(props.product.id))
+const cartButtonLabel = computed(() => {
+  if (isSold.value) return 'Agotado'
+  return inCart.value ? 'En carrito' : 'Agregar'
+})
 
 const addToCart = () => {
+  if (isSold.value) return
   cartStore.addItem(props.product)
 }
 
 const openDetail = () => {
   router.push(`/products/${props.product.id}`)
 }
+
+const onCardKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  openDetail()
+}
 </script>
 
 <template>
-  <div class="product-card glass-card">
-    <button class="image-wrapper image-button" @click="openDetail" type="button">
+  <div
+    class="product-card glass-card"
+    :class="{ 'is-sold': isSold }"
+    role="link"
+    tabindex="0"
+    :aria-label="`Ver detalle de ${product.name}`"
+    @click="openDetail"
+    @keydown="onCardKeydown"
+  >
+    <button class="image-wrapper image-button" :aria-label="`Ver imagenes y detalle de ${product.name}`" @click="openDetail" type="button">
       <img
         v-if="product.primary_image_url"
         :src="product.primary_image_url"
@@ -39,9 +58,14 @@ const openDetail = () => {
         loading="lazy"
       />
       <div v-else class="no-image">Sin imagen</div>
+
+      <div v-if="isSold" class="sold-overlay" />
       
-      <div v-if="product.discount_pct" class="badge discount">
+      <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isSold }">
         -{{ product.discount_pct }}%
+      </div>
+      <div v-if="isSold" class="badge sold">
+        Agotado
       </div>
       <div class="badge condition">
         {{ conditionLabel }}
@@ -54,7 +78,7 @@ const openDetail = () => {
         <span v-if="product.size" class="size">Talla: {{ product.size }}</span>
       </div>
       
-      <button class="name-link" @click="openDetail" type="button">
+      <button class="name-link" :aria-label="`Ver detalle de ${product.name}`" @click="openDetail" type="button">
         <h3 class="name">{{ product.name }}</h3>
       </button>
 
@@ -71,12 +95,19 @@ const openDetail = () => {
         </div>
         
         <button 
-          @click="addToCart" 
+          @click.stop="addToCart" 
           class="btn-cart"
-          :class="{ 'in-cart': inCart }"
-          :disabled="inCart"
+          :class="{ 'in-cart': inCart && !isSold, 'is-sold': isSold }"
+          :disabled="inCart || isSold"
+          :aria-label="
+            isSold
+              ? `${product.name} agotado`
+              : inCart
+                ? `${product.name} ya esta en tu carrito`
+                : `Agregar ${product.name} al carrito`
+          "
         >
-          {{ inCart ? 'En carrito' : 'Agregar' }}
+          {{ cartButtonLabel }}
         </button>
       </div>
     </div>
@@ -89,6 +120,12 @@ const openDetail = () => {
   flex-direction: column;
   overflow: hidden;
   padding: 0;
+  cursor: pointer;
+}
+
+.product-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 4px;
 }
 
 .image-wrapper {
@@ -115,6 +152,11 @@ const openDetail = () => {
   width: 100%;
 }
 
+.image-button:focus-visible,
+.name-link:focus-visible {
+  outline-offset: -4px;
+}
+
 .product-image {
   width: 100%;
   height: 100%;
@@ -126,6 +168,10 @@ const openDetail = () => {
   transform: scale(1.05);
 }
 
+.product-card.is-sold .product-image {
+  filter: grayscale(0.15) brightness(0.68);
+}
+
 .no-image {
   width: 100%;
   height: 100%;
@@ -133,6 +179,13 @@ const openDetail = () => {
   align-items: center;
   justify-content: center;
   color: var(--text-tertiary);
+}
+
+.sold-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(8, 8, 8, 0.1) 0%, rgba(8, 8, 8, 0.28) 100%);
+  pointer-events: none;
 }
 
 .badge {
@@ -152,11 +205,30 @@ const openDetail = () => {
   color: var(--bg-main);
 }
 
+.badge.discount.stacked {
+  top: 3.2rem;
+}
+
 .badge.condition {
   right: 0.75rem;
   background: var(--surface-glass);
   color: var(--text-primary);
   border: 1px solid var(--border-light);
+}
+
+.badge.sold {
+  left: 0.75rem;
+  top: 0.75rem;
+  background: #c62828;
+  color: #fff;
+  border-radius: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge.sold + .badge.condition,
+.badge.discount + .badge.sold + .badge.condition {
+  top: 3.2rem;
 }
 
 .content {
@@ -242,6 +314,13 @@ const openDetail = () => {
   color: var(--accent-primary);
   border-color: var(--accent-primary);
   opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.btn-cart.is-sold {
+  background: rgba(198, 40, 40, 0.12);
+  color: #f3b6b6;
+  border-color: rgba(198, 40, 40, 0.4);
   cursor: not-allowed;
 }
 </style>

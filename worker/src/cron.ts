@@ -4,7 +4,7 @@ import { rebuildCatalogSnapshots } from './lib/catalog-builder'
 import { enableForeignKeys } from './middleware'
 
 /**
- * Handler principal para Cron Triggers configurados en wrangler.toml
+ * Handler principal para Cron Triggers configurados en wrangler.
  */
 export async function handleScheduled(
   cronType: string,
@@ -15,8 +15,9 @@ export async function handleScheduled(
   const now = nowISO()
 
   switch (cronType) {
-    case '*/15 * * * *':
+    case '*/5 * * * *':
       await expireOrders(env, now)
+      await expirePromotions(env, now)
       break
     case '0 * * * *':
       await expirePromotions(env, now)
@@ -24,6 +25,7 @@ export async function handleScheduled(
     case '0 3 * * *':
       await cleanupSessions(env, now)
       break
+    case '0 4 * * SUN':
     case '0 4 * * 0':
       await backupDatabase(env)
       break

@@ -4,46 +4,174 @@ import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
 import { authMiddleware, csrfMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
+import {
+  DEFAULT_ADMIN_BANNER_TEXT,
+  DEFAULT_ADMIN_BANNER_TITLE,
+  DEFAULT_ORDER_EXPIRY_MINUTES,
+  DEFAULT_STORE_BANNER_TEXT,
+  DEFAULT_STORE_BANNER_TITLE,
+  DEFAULT_STORE_NAME,
+  SETTINGS_KEYS,
+} from '@bap-shop/shared'
 
 export const adminSettingsRouter = new Hono<HonoEnv>()
 adminSettingsRouter.use('*', authMiddleware())
 
 const ALLOWED_SETTINGS_KEYS = [
-  'whatsapp_number',
-  'store_name',
-  'whatsapp_header',
-  'order_expiry_minutes',
+  SETTINGS_KEYS.WHATSAPP_NUMBER,
+  SETTINGS_KEYS.STORE_NAME,
+  SETTINGS_KEYS.WHATSAPP_HEADER,
+  SETTINGS_KEYS.WHATSAPP_TEMPLATE,
+  SETTINGS_KEYS.ORDER_EXPIRY_MINUTES,
+  SETTINGS_KEYS.BRAND_LOGO_URL,
+  SETTINGS_KEYS.SOCIAL_FACEBOOK_URL,
+  SETTINGS_KEYS.SOCIAL_TIKTOK_URL,
+  SETTINGS_KEYS.SOCIAL_INSTAGRAM_URL,
+  SETTINGS_KEYS.STORE_BANNER_TITLE,
+  SETTINGS_KEYS.STORE_BANNER_TEXT,
+  SETTINGS_KEYS.STORE_BANNER_IMAGE_URL,
+  SETTINGS_KEYS.STORE_BANNER_VIDEO_URL,
+  SETTINGS_KEYS.STORE_BANNER_MEDIA_TYPE,
+  SETTINGS_KEYS.ADMIN_BANNER_TITLE,
+  SETTINGS_KEYS.ADMIN_BANNER_TEXT,
+  SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL,
 ] as const
 
-// GET /admin/settings
-adminSettingsRouter.get('/', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
-  const settings = Object.fromEntries(rows.results.map((r) => [r.key, r.value]))
-  return c.json({ success: true, data: settings })
-})
+const BRANDING_UPLOADS = {
+  logo: {
+    settingKey: SETTINGS_KEYS.BRAND_LOGO_URL,
+    folder: 'logo',
+    maxBytes: 2 * 1024 * 1024,
+    allowedMimes: ['image/svg+xml', 'image/png', 'image/webp', 'image/jpeg'] as const,
+  },
+  'store-banner': {
+    settingKey: SETTINGS_KEYS.STORE_BANNER_IMAGE_URL,
+    folder: 'store-banner',
+    maxBytes: 5 * 1024 * 1024,
+    allowedMimes: ['image/png', 'image/webp', 'image/jpeg'] as const,
+  },
+  'store-banner-video': {
+    settingKey: SETTINGS_KEYS.STORE_BANNER_VIDEO_URL,
+    folder: 'store-banner-video',
+    maxBytes: 8 * 1024 * 1024,
+    allowedMimes: ['video/mp4'] as const,
+  },
+  'admin-banner': {
+    settingKey: SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL,
+    folder: 'admin-banner',
+    maxBytes: 5 * 1024 * 1024,
+    allowedMimes: ['image/png', 'image/webp', 'image/jpeg'] as const,
+  },
+} as const
 
-// PUT /admin/settings
+const MIME_EXTENSIONS: Record<string, string> = {
+  'image/svg+xml': 'svg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+  'video/mp4': 'mp4',
+}
+
+export const DEFAULT_PUBLIC_BRANDING_SETTINGS = {
+  store_name: DEFAULT_STORE_NAME,
+  brand_logo_url: '',
+  social_facebook_url: '',
+  social_tiktok_url: '',
+  social_instagram_url: '',
+  store_banner_title: DEFAULT_STORE_BANNER_TITLE,
+  store_banner_text: DEFAULT_STORE_BANNER_TEXT,
+  store_banner_image_url: '',
+  store_banner_video_url: '',
+  store_banner_media_type: 'image',
+  admin_banner_title: DEFAULT_ADMIN_BANNER_TITLE,
+  admin_banner_text: DEFAULT_ADMIN_BANNER_TEXT,
+  admin_banner_image_url: '',
+}
+
+export async function loadAllSettings(db: D1Database) {
+  const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
+  return Object.fromEntries(rows.results.map((row) => [row.key, row.value]))
+}
+
+export function getPublicBrandingSettings(settings: Record<string, string>) {
+  return {
+    store_name: settings[SETTINGS_KEYS.STORE_NAME] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_name,
+    brand_logo_url: settings[SETTINGS_KEYS.BRAND_LOGO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.brand_logo_url,
+    social_facebook_url:
+      settings[SETTINGS_KEYS.SOCIAL_FACEBOOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_facebook_url,
+    social_tiktok_url:
+      settings[SETTINGS_KEYS.SOCIAL_TIKTOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_tiktok_url,
+    social_instagram_url:
+      settings[SETTINGS_KEYS.SOCIAL_INSTAGRAM_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_instagram_url,
+    store_banner_title:
+      settings[SETTINGS_KEYS.STORE_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_title,
+    store_banner_text:
+      settings[SETTINGS_KEYS.STORE_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_text,
+    store_banner_image_url:
+      settings[SETTINGS_KEYS.STORE_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_image_url,
+    store_banner_video_url:
+      settings[SETTINGS_KEYS.STORE_BANNER_VIDEO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_video_url,
+    store_banner_media_type:
+      settings[SETTINGS_KEYS.STORE_BANNER_MEDIA_TYPE] === 'video' ? 'video' : DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_media_type,
+    admin_banner_title:
+      settings[SETTINGS_KEYS.ADMIN_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_title,
+    admin_banner_text:
+      settings[SETTINGS_KEYS.ADMIN_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_text,
+    admin_banner_image_url:
+      settings[SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_image_url,
+  }
+}
+
+async function upsertSetting(db: D1Database, key: string, value: string) {
+  await db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).bind(key, value).run()
+}
+
+function extractManagedBrandingKey(url: string, publicDomain: string): string | null {
+  const prefix = `https://${publicDomain}/public/branding/`
+  if (!url.startsWith(prefix)) return null
+  return url.replace(`https://${publicDomain}/`, '')
+}
+
 const settingsSchema = z.object({
   whatsapp_number: z.string().min(7).max(20).regex(/^\+?\d[\d\s\-().]+$/).optional(),
   store_name: z.string().min(1).max(100).optional(),
   whatsapp_header: z.string().max(200).optional(),
-  order_expiry_minutes: z.enum(['60', '120', '240', '480']).optional(),
+  whatsapp_template: z.string().max(4000).optional(),
+  order_expiry_minutes: z.enum(['10', '20', '30', '60', '120', '240', '1440']).optional(),
+  brand_logo_url: z.string().max(500).optional(),
+  social_facebook_url: z.string().max(500).optional(),
+  social_tiktok_url: z.string().max(500).optional(),
+  social_instagram_url: z.string().max(500).optional(),
+  store_banner_title: z.string().min(1).max(120).optional(),
+  store_banner_text: z.string().max(240).optional(),
+  store_banner_image_url: z.string().max(500).optional(),
+  store_banner_video_url: z.string().max(500).optional(),
+  store_banner_media_type: z.enum(['image', 'video']).optional(),
+  admin_banner_title: z.string().min(1).max(120).optional(),
+  admin_banner_text: z.string().max(240).optional(),
+  admin_banner_image_url: z.string().max(500).optional(),
+})
+
+adminSettingsRouter.get('/', async (c) => {
+  const settings = await loadAllSettings(c.env.DB)
+  return c.json({ success: true, data: settings })
 })
 
 adminSettingsRouter.put('/', csrfMiddleware(), zValidator('json', settingsSchema), async (c) => {
   const updates = c.req.valid('json')
-  const entries = Object.entries(updates).filter(([k]) =>
-    ALLOWED_SETTINGS_KEYS.includes(k as typeof ALLOWED_SETTINGS_KEYS[number])
+  const entries = Object.entries(updates).filter(([key]) =>
+    ALLOWED_SETTINGS_KEYS.includes(key as (typeof ALLOWED_SETTINGS_KEYS)[number])
   )
 
   if (entries.length === 0) {
-    return c.json({ success: false, error: 'No se recibieron valores válidos para actualizar' }, 422)
+    return c.json({ success: false, error: 'No se recibieron valores validos para actualizar' }, 422)
   }
 
-  const oldRows = await c.env.DB.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
-  const oldValues = Object.fromEntries(oldRows.results.map((r) => [r.key, r.value]))
+  const oldValues = await loadAllSettings(c.env.DB)
 
-  // Upsert batch
   const statements = entries.map(([key, value]) =>
     c.env.DB.prepare(
       `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -53,19 +181,77 @@ adminSettingsRouter.put('/', csrfMiddleware(), zValidator('json', settingsSchema
 
   await c.env.DB.batch(statements)
 
-  const newValues = { ...oldValues, ...Object.fromEntries(entries.map(([k, v]) => [k, String(v)])) }
+  const newValues = { ...oldValues, ...Object.fromEntries(entries.map(([key, value]) => [key, String(value)])) }
   await logAction(c.env.DB, c.get('adminId'), 'settings.update', 'settings', 'global', oldValues, newValues)
 
   return c.json({ success: true, data: newValues })
 })
 
-// ============================================================
-// AUDITORÍA
-// ============================================================
+adminSettingsRouter.post('/assets/:assetType', csrfMiddleware(), async (c) => {
+  const { assetType } = c.req.param()
+  const config = BRANDING_UPLOADS[assetType as keyof typeof BRANDING_UPLOADS]
+
+  if (!config) {
+    return c.json({ success: false, error: 'Tipo de asset no soportado' }, 404)
+  }
+
+  const contentType = c.req.header('Content-Type') ?? ''
+  if (!config.allowedMimes.includes(contentType as never)) {
+    return c.json({ success: false, error: 'Formato no valido. Revisa las especificaciones del archivo.' }, 422)
+  }
+
+  const body = await c.req.arrayBuffer()
+  if (body.byteLength === 0) {
+    return c.json({ success: false, error: 'No se recibio ningun archivo' }, 422)
+  }
+  if (body.byteLength > config.maxBytes) {
+    return c.json({ success: false, error: 'El archivo supera el tamano permitido' }, 422)
+  }
+
+  const ext = MIME_EXTENSIONS[contentType]
+  if (!ext) {
+    return c.json({ success: false, error: 'No se pudo determinar la extension del archivo' }, 422)
+  }
+
+  const oldRow = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?')
+    .bind(config.settingKey)
+    .first<{ value: string }>()
+
+  const r2Key = `public/branding/${config.folder}-${Date.now()}.${ext}`
+  await c.env.R2.put(r2Key, body, { httpMetadata: { contentType } })
+
+  const publicUrl = `https://${c.env.R2_PUBLIC_DOMAIN}/${r2Key}`
+  await upsertSetting(c.env.DB, config.settingKey, publicUrl)
+
+  const previousKey = oldRow?.value ? extractManagedBrandingKey(oldRow.value, c.env.R2_PUBLIC_DOMAIN) : null
+  if (previousKey && previousKey !== r2Key) {
+    await c.env.R2.delete(previousKey)
+  }
+
+  await logAction(
+    c.env.DB,
+    c.get('adminId'),
+    'settings.asset.upload',
+    'settings',
+    config.settingKey,
+    { value: oldRow?.value ?? null },
+    { value: publicUrl }
+  )
+
+  return c.json({
+    success: true,
+    data: {
+      key: config.settingKey,
+      value: publicUrl,
+      contentType,
+      size: body.byteLength,
+    },
+  })
+})
+
 export const adminAuditRouter = new Hono<HonoEnv>()
 adminAuditRouter.use('*', authMiddleware())
 
-// GET /admin/audit?action=&entity_type=&date_from=&date_to=&page=&limit=
 adminAuditRouter.get('/', async (c) => {
   const action = c.req.query('action')
   const entityType = c.req.query('entity_type')
@@ -78,10 +264,22 @@ adminAuditRouter.get('/', async (c) => {
   const conditions: string[] = []
   const bindings: unknown[] = []
 
-  if (action) { conditions.push('al.action LIKE ?'); bindings.push(`%${action}%`) }
-  if (entityType) { conditions.push('al.entity_type = ?'); bindings.push(entityType) }
-  if (dateFrom) { conditions.push('al.created_at >= ?'); bindings.push(dateFrom) }
-  if (dateTo) { conditions.push('al.created_at <= ?'); bindings.push(dateTo) }
+  if (action) {
+    conditions.push('al.action LIKE ?')
+    bindings.push(`%${action}%`)
+  }
+  if (entityType) {
+    conditions.push('al.entity_type = ?')
+    bindings.push(entityType)
+  }
+  if (dateFrom) {
+    conditions.push('al.created_at >= ?')
+    bindings.push(dateFrom)
+  }
+  if (dateTo) {
+    conditions.push('al.created_at <= ?')
+    bindings.push(dateTo)
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
@@ -102,5 +300,18 @@ adminAuditRouter.get('/', async (c) => {
     success: true,
     data: rows.results,
     meta: { page, limit, total: total?.cnt ?? 0, totalPages: Math.ceil((total?.cnt ?? 0) / limit) },
+  })
+})
+
+export const publicSettingsRouter = new Hono<HonoEnv>()
+
+publicSettingsRouter.get('/public', async (c) => {
+  const settings = await loadAllSettings(c.env.DB)
+  return c.json({
+    success: true,
+    data: {
+      ...getPublicBrandingSettings(settings),
+      order_expiry_minutes: settings[SETTINGS_KEYS.ORDER_EXPIRY_MINUTES] || String(DEFAULT_ORDER_EXPIRY_MINUTES),
+    },
   })
 })

@@ -6,7 +6,7 @@ import BaseConfirmModal from '../components/BaseConfirmModal.vue'
 import FormDateInput from '../components/FormDateInput.vue'
 import FormTextarea from '../components/FormTextarea.vue'
 import BasePagination from '../components/BasePagination.vue'
-import BaseTable from '../components\BaseTable.vue'
+import BaseTable from '../components/BaseTable.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 
 interface OrderListRow {
@@ -36,6 +36,12 @@ interface OrderDetail extends OrderListRow {
   }>
 }
 
+interface FeedbackModalState {
+  title: string
+  message: string
+  variant: 'danger' | 'warning' | 'neutral'
+}
+
 const orders = ref<OrderListRow[]>([])
 const isLoading = ref(true)
 const isDetailLoading = ref(false)
@@ -44,6 +50,7 @@ const isUpdatingStatus = ref(false)
 const selectedOrder = ref<OrderDetail | null>(null)
 const detailNotes = ref('')
 const pendingOrderStatus = ref<'confirmed' | 'cancelled' | null>(null)
+const feedbackModal = ref<FeedbackModalState | null>(null)
 const meta = ref({ page: 1, limit: 15, total: 0, totalPages: 1 })
 const filters = ref({
   status: '',
@@ -78,7 +85,11 @@ const fetchOrders = async (page = 1) => {
     orders.value = res.data
     meta.value = res.meta
   } catch (error: any) {
-    alert(`Error cargando pedidos: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudieron cargar los pedidos',
+      message: error.message || 'Ocurrio un error cargando el listado.',
+      variant: 'danger',
+    }
   } finally {
     isLoading.value = false
   }
@@ -106,7 +117,11 @@ const openOrder = async (id: string) => {
     selectedOrder.value = res.data
     detailNotes.value = res.data.notes ?? ''
   } catch (error: any) {
-    alert(`Error cargando detalle: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudo cargar el detalle',
+      message: error.message || 'Ocurrio un error obteniendo el pedido.',
+      variant: 'danger',
+    }
   } finally {
     isDetailLoading.value = false
   }
@@ -138,7 +153,11 @@ const saveNotes = async () => {
       selectedOrder.value.notes = res.data.notes
     }
   } catch (error: any) {
-    alert(`Error guardando notas: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudieron guardar las notas',
+      message: error.message || 'Revisa el pedido e intenta nuevamente.',
+      variant: 'warning',
+    }
   } finally {
     isSavingNotes.value = false
   }
@@ -150,6 +169,10 @@ const requestStatusChange = (newStatus: 'confirmed' | 'cancelled') => {
 
 const closeStatusModal = () => {
   pendingOrderStatus.value = null
+}
+
+const closeFeedbackModal = () => {
+  feedbackModal.value = null
 }
 
 const updateStatus = async () => {
@@ -171,7 +194,11 @@ const updateStatus = async () => {
     await openOrder(selectedOrder.value.id)
     closeStatusModal()
   } catch (error: any) {
-    alert(`Error actualizando pedido: ${error.message}`)
+    feedbackModal.value = {
+      title: 'No se pudo actualizar el pedido',
+      message: error.message || 'Revisa el estado actual del pedido e intenta otra vez.',
+      variant: 'warning',
+    }
   } finally {
     isUpdatingStatus.value = false
   }
@@ -335,12 +362,12 @@ onMounted(() => {
               {{ isSavingNotes ? 'Guardando...' : 'Guardar notas' }}
             </button>
             <button
-              v-if="selectedStatus === 'pending'"
+              v-if="selectedStatus === 'pending' || selectedStatus === 'confirmed'"
               type="button"
               class="btn btn-danger"
               @click="requestStatusChange('cancelled')"
             >
-              Cancelar pedido
+              {{ selectedStatus === 'confirmed' ? 'Reactivar producto' : 'Cancelar pedido' }}
             </button>
             <button
               v-if="selectedStatus === 'pending'"
@@ -364,6 +391,17 @@ onMounted(() => {
       :is-loading="isUpdatingStatus"
       @cancel="closeStatusModal"
       @confirm="updateStatus"
+    />
+
+    <BaseConfirmModal
+      :is-open="!!feedbackModal"
+      :title="feedbackModal?.title || 'Aviso'"
+      :message="feedbackModal?.message || ''"
+      confirm-label="Entendido"
+      :variant="feedbackModal?.variant || 'neutral'"
+      single-action
+      @cancel="closeFeedbackModal"
+      @confirm="closeFeedbackModal"
     />
   </div>
 </template>
@@ -523,5 +561,41 @@ onMounted(() => {
 .btn-danger {
   background: var(--danger);
   color: white;
+}
+
+@media (max-width: 900px) {
+  .header-actions {
+    margin-bottom: 1.25rem;
+  }
+
+  .filters-bar {
+    gap: 0.75rem;
+  }
+
+  .filter-field input,
+  .filter-field select {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .filter-actions {
+    justify-content: stretch;
+    flex-wrap: wrap;
+  }
+
+  .filter-actions .btn {
+    flex: 1 1 140px;
+  }
+
+  .modal {
+    padding: 1rem;
+  }
+
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+  }
 }
 </style>

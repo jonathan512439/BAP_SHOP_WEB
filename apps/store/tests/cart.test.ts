@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { PRODUCT_TYPE, PHYSICAL_CONDITION } from '@bap-shop/shared'
+import { PRODUCT_STATUS, PRODUCT_TYPE, PHYSICAL_CONDITION } from '@bap-shop/shared'
 import { useCartStore } from '../src/stores/cart'
 
 class LocalStorageMock {
@@ -35,6 +35,7 @@ class LocalStorageMock {
 const makeProduct = (id: string, price: number, promoPrice?: number) => ({
   id,
   type: PRODUCT_TYPE.SNEAKER,
+  status: PRODUCT_STATUS.ACTIVE,
   name: `Producto ${id}`,
   brand: { id: 'brand-1', name: 'Nike', slug: 'nike' },
   model: { id: 'model-1', name: 'Air Force 1' },
@@ -76,6 +77,18 @@ describe('cart store', () => {
     cart.addItem(product)
 
     expect(cart.items).toHaveLength(1)
+  })
+
+  it('no agrega productos agotados al carrito', () => {
+    const cart = useCartStore()
+    const soldProduct = {
+      ...makeProduct('p-3', 52000),
+      status: PRODUCT_STATUS.SOLD,
+    }
+
+    cart.addItem(soldProduct)
+
+    expect(cart.items).toHaveLength(0)
   })
 
   it('elimina productos del carrito', () => {

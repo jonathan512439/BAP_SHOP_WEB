@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 interface GalleryImage {
   r2_key: string
@@ -14,6 +14,7 @@ const props = defineProps<{
 }>()
 
 const selectedUrl = ref<string | null>(null)
+const isLightboxOpen = ref(false)
 
 const orderedImages = computed(() => {
   return [...props.images].sort((a, b) => {
@@ -49,6 +50,8 @@ const selectImage = (url: string) => {
   selectedUrl.value = url
 }
 
+const imageNumber = (r2Key: string) => orderedImages.value.findIndex((image) => image.r2_key === r2Key) + 1
+
 const navigate = (direction: 'prev' | 'next') => {
   if (!canNavigate.value) {
     return
@@ -60,17 +63,70 @@ const navigate = (direction: 'prev' | 'next') => {
 
   selectedUrl.value = orderedImages.value[nextIndex]?.url ?? selectedUrl.value
 }
+
+const openLightbox = () => {
+  if (!selectedImage.value) {
+    return
+  }
+
+  isLightboxOpen.value = true
+}
+
+const closeLightbox = () => {
+  isLightboxOpen.value = false
+}
+
+const handleKeydown = (event: KeyboardEvent) => {
+  if (!isLightboxOpen.value) return
+
+  if (event.key === 'Escape') {
+    closeLightbox()
+    return
+  }
+
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault()
+    navigate('prev')
+    return
+  }
+
+  if (event.key === 'ArrowRight') {
+    event.preventDefault()
+    navigate('next')
+  }
+}
+
+watch(isLightboxOpen, (open) => {
+  if (open) {
+    window.addEventListener('keydown', handleKeydown)
+    return
+  }
+
+  window.removeEventListener('keydown', handleKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+})
 </script>
 
 <template>
   <div class="gallery glass-card">
     <div class="hero-frame">
-      <img v-if="selectedImage" :src="selectedImage.url" :alt="alt" class="hero-image" />
+      <button
+        v-if="selectedImage"
+        type="button"
+        class="hero-trigger"
+        :aria-label="`Abrir imagen completa de ${alt}`"
+        @click="openLightbox"
+      >
+        <img :src="selectedImage.url" :alt="alt" class="hero-image" />
+      </button>
       <div v-else class="hero-image empty-image">Sin imagen</div>
 
       <template v-if="canNavigate">
-        <button type="button" class="nav-btn nav-prev" @click="navigate('prev')">‹</button>
-        <button type="button" class="nav-btn nav-next" @click="navigate('next')">›</button>
+        <button type="button" class="nav-btn nav-prev" aria-label="Imagen anterior" @click="navigate('prev')">&lsaquo;</button>
+        <button type="button" class="nav-btn nav-next" aria-label="Siguiente imagen" @click="navigate('next')">&rsaquo;</button>
       </template>
     </div>
 
@@ -81,26 +137,72 @@ const navigate = (direction: 'prev' | 'next') => {
         type="button"
         class="thumb"
         :class="{ active: selectedImage?.url === image.url }"
+        :aria-label="`Ver imagen ${imageNumber(image.r2_key)} de ${orderedImages.length}`"
+        :aria-pressed="selectedImage?.url === image.url"
         @click="selectImage(image.url)"
       >
-        <img :src="image.url" :alt="alt" />
+        <img :src="image.url" :alt="`${alt} miniatura ${imageNumber(image.r2_key)}`" />
       </button>
     </div>
+  </div>
+
+  <div
+    v-if="isLightboxOpen && selectedImage"
+    class="lightbox"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="`Visor de imagenes de ${alt}`"
+    @click.self="closeLightbox"
+  >
+    <button type="button" class="lightbox-close" aria-label="Cerrar visor" @click="closeLightbox">×</button>
+
+    <button
+      v-if="canNavigate"
+      type="button"
+      class="lightbox-nav lightbox-prev"
+      aria-label="Imagen anterior"
+      @click.stop="navigate('prev')"
+    >
+      &lsaquo;
+    </button>
+
+    <div class="lightbox-frame">
+      <img :src="selectedImage.url" :alt="alt" class="lightbox-image" />
+    </div>
+
+    <button
+      v-if="canNavigate"
+      type="button"
+      class="lightbox-nav lightbox-next"
+      aria-label="Siguiente imagen"
+      @click.stop="navigate('next')"
+    >
+      &rsaquo;
+    </button>
   </div>
 </template>
 
 <style scoped>
 .gallery {
-  padding: 1.25rem;
+  padding: 1.75rem;
 }
 
 .hero-frame {
   position: relative;
 }
 
+.hero-trigger {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
 .hero-image {
   width: 100%;
-  aspect-ratio: 1;
+  aspect-ratio: 1 / 1.14;
   object-fit: cover;
   border-radius: var(--radius-md);
   background: var(--bg-tertiary);
@@ -123,7 +225,7 @@ const navigate = (direction: 'prev' | 'next') => {
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(12, 15, 24, 0.72);
   color: var(--text-primary);
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   line-height: 1;
 }
 
@@ -137,9 +239,9 @@ const navigate = (direction: 'prev' | 'next') => {
 
 .thumbs {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-  gap: 0.75rem;
-  margin-top: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 0.9rem;
+  margin-top: 1.15rem;
 }
 
 .thumb {
@@ -157,8 +259,114 @@ const navigate = (direction: 'prev' | 'next') => {
 
 .thumb img {
   width: 100%;
-  height: 72px;
+  height: 104px;
   object-fit: cover;
   display: block;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: rgba(7, 10, 16, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.lightbox-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.lightbox-image {
+  max-width: min(92vw, 1240px);
+  max-height: 88vh;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-md);
+  object-fit: contain;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.45);
+}
+
+.lightbox-close,
+.lightbox-nav {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(12, 15, 24, 0.78);
+  color: var(--text-primary);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.lightbox-nav {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+@media (max-width: 720px) {
+  .gallery {
+    padding: 1.1rem;
+  }
+
+  .hero-image {
+    aspect-ratio: 1 / 1.08;
+  }
+
+  .thumbs {
+    grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+    gap: 0.7rem;
+  }
+
+  .thumb img {
+    height: 88px;
+  }
+
+  .lightbox {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    padding: 1rem 0.9rem 1.25rem;
+  }
+
+  .lightbox-frame {
+    order: 1;
+  }
+
+  .lightbox-image {
+    max-width: 100%;
+    max-height: 78vh;
+  }
+
+  .lightbox-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 46px;
+    height: 46px;
+  }
+
+  .lightbox-prev {
+    left: 0.75rem;
+  }
+
+  .lightbox-next {
+    right: 0.75rem;
+  }
 }
 </style>

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { PRODUCT_TYPE, PHYSICAL_CONDITION } from '@bap-shop/shared'
+import { PRODUCT_STATUS, PRODUCT_TYPE, PHYSICAL_CONDITION } from '@bap-shop/shared'
 import { useCartStore } from '../src/stores/cart'
 import { useOrder } from '../src/composables/useOrder'
 
@@ -35,6 +35,7 @@ class LocalStorageMock {
 const makeProduct = (id: string, price: number, promoPrice?: number) => ({
   id,
   type: PRODUCT_TYPE.SNEAKER,
+  status: PRODUCT_STATUS.ACTIVE,
   name: `Producto ${id}`,
   brand: { id: 'brand-1', name: 'Nike', slug: 'nike' },
   model: { id: 'model-1', name: 'Air Force 1' },
