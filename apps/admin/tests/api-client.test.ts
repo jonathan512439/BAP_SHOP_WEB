@@ -58,8 +58,9 @@ describe('apiClient', () => {
 
     expect(result.data.ok).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    const expectedApiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8787'
     expect(fetchMock).toHaveBeenCalledWith(
-      'http://localhost:8787/admin/settings?page=2',
+      `${expectedApiBaseUrl}/admin/settings?page=2`,
       expect.objectContaining({
         method: 'PUT',
         credentials: 'include',
