@@ -28,8 +28,8 @@ const socialLinks = computed(() => [
   { label: 'TikTok', url: brandingStore.branding.social_tiktok_url },
   { label: 'Instagram', url: brandingStore.branding.social_instagram_url },
 ].filter((item) => item.url))
-const fixedFooterContactUrl = 'https://wa.me/59161832872'
-const fixedFooterPhone = '+591 61832872'
+const fixedFooterContactUrl = 'https://wa.me/59167156258'
+const fixedFooterPhone = '+591 67156258'
 
 watch(
   () => brandingStore.branding,
@@ -422,9 +422,13 @@ watch(
 
 .footer-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 280px));
+  justify-content: center;
   gap: 1rem;
-  text-align: left;
+  text-align: center;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
 }
 
 .footer-section {
@@ -432,6 +436,7 @@ watch(
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-light);
+  min-height: 152px;
 }
 
 .footer-inline-link {
@@ -445,6 +450,7 @@ watch(
   display: grid;
   gap: 0.4rem;
   margin-top: 0.75rem;
+  justify-items: center;
 }
 
 .footer-socials {
@@ -544,6 +550,7 @@ watch(
 
   .footer-grid {
     text-align: center;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

@@ -2,8 +2,9 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, csrfMiddleware } from '../../middleware'
+import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
+import { loadAllSettings, upsertSetting } from '../../lib/settings'
 import {
   DEFAULT_ADMIN_BANNER_TEXT,
   DEFAULT_ADMIN_BANNER_TITLE,
@@ -88,51 +89,100 @@ export const DEFAULT_PUBLIC_BRANDING_SETTINGS = {
   admin_banner_image_url: '',
 }
 
-export async function loadAllSettings(db: D1Database) {
-  const rows = await db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
-  return Object.fromEntries(rows.results.map((row) => [row.key, row.value]))
+function getPublicAssetOrigin(publicDomain: string) {
+  const domain = publicDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+  return `https://${domain}`
 }
 
-export function getPublicBrandingSettings(settings: Record<string, string>) {
-  return {
-    store_name: settings[SETTINGS_KEYS.STORE_NAME] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_name,
-    brand_logo_url: settings[SETTINGS_KEYS.BRAND_LOGO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.brand_logo_url,
-    social_facebook_url:
-      settings[SETTINGS_KEYS.SOCIAL_FACEBOOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_facebook_url,
-    social_tiktok_url:
-      settings[SETTINGS_KEYS.SOCIAL_TIKTOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_tiktok_url,
-    social_instagram_url:
-      settings[SETTINGS_KEYS.SOCIAL_INSTAGRAM_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_instagram_url,
-    store_banner_title:
-      settings[SETTINGS_KEYS.STORE_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_title,
-    store_banner_text:
-      settings[SETTINGS_KEYS.STORE_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_text,
-    store_banner_image_url:
-      settings[SETTINGS_KEYS.STORE_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_image_url,
-    store_banner_video_url:
-      settings[SETTINGS_KEYS.STORE_BANNER_VIDEO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_video_url,
-    store_banner_media_type:
-      settings[SETTINGS_KEYS.STORE_BANNER_MEDIA_TYPE] === 'video' ? 'video' : DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_media_type,
-    admin_banner_title:
-      settings[SETTINGS_KEYS.ADMIN_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_title,
-    admin_banner_text:
-      settings[SETTINGS_KEYS.ADMIN_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_text,
-    admin_banner_image_url:
-      settings[SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_image_url,
+export function normalizeManagedBrandingUrl(url: string, publicDomain: string) {
+  const value = url.trim()
+  if (!value) return ''
+
+  if (value.startsWith('public/branding/')) {
+    return `${getPublicAssetOrigin(publicDomain)}/${value}`
+  }
+
+  if (value.startsWith('/public/branding/')) {
+    return `${getPublicAssetOrigin(publicDomain)}${value}`
+  }
+
+  try {
+    const parsedUrl = new URL(value)
+    if (!parsedUrl.pathname.startsWith('/public/branding/')) {
+      return value
+    }
+
+    return `${getPublicAssetOrigin(publicDomain)}${parsedUrl.pathname}${parsedUrl.search}`
+  } catch {
+    return value
   }
 }
 
-async function upsertSetting(db: D1Database, key: string, value: string) {
-  await db.prepare(
-    `INSERT INTO settings (key, value) VALUES (?, ?)
-     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
-  ).bind(key, value).run()
+export function normalizeBrandingSettings(settings: Record<string, string>, publicDomain: string): Record<string, string> {
+  return {
+    ...settings,
+    [SETTINGS_KEYS.BRAND_LOGO_URL]: normalizeManagedBrandingUrl(settings[SETTINGS_KEYS.BRAND_LOGO_URL] || '', publicDomain),
+    [SETTINGS_KEYS.STORE_BANNER_IMAGE_URL]: normalizeManagedBrandingUrl(
+      settings[SETTINGS_KEYS.STORE_BANNER_IMAGE_URL] || '',
+      publicDomain
+    ),
+    [SETTINGS_KEYS.STORE_BANNER_VIDEO_URL]: normalizeManagedBrandingUrl(
+      settings[SETTINGS_KEYS.STORE_BANNER_VIDEO_URL] || '',
+      publicDomain
+    ),
+    [SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL]: normalizeManagedBrandingUrl(
+      settings[SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL] || '',
+      publicDomain
+    ),
+  }
 }
 
-function extractManagedBrandingKey(url: string, publicDomain: string): string | null {
-  const prefix = `https://${publicDomain}/public/branding/`
-  if (!url.startsWith(prefix)) return null
-  return url.replace(`https://${publicDomain}/`, '')
+export function getPublicBrandingSettings(settings: Record<string, string>, publicDomain: string) {
+  const normalizedSettings = normalizeBrandingSettings(settings, publicDomain)
+
+  return {
+    store_name: normalizedSettings[SETTINGS_KEYS.STORE_NAME] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_name,
+    brand_logo_url: normalizedSettings[SETTINGS_KEYS.BRAND_LOGO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.brand_logo_url,
+    social_facebook_url:
+      normalizedSettings[SETTINGS_KEYS.SOCIAL_FACEBOOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_facebook_url,
+    social_tiktok_url:
+      normalizedSettings[SETTINGS_KEYS.SOCIAL_TIKTOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_tiktok_url,
+    social_instagram_url:
+      normalizedSettings[SETTINGS_KEYS.SOCIAL_INSTAGRAM_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_instagram_url,
+    store_banner_title:
+      normalizedSettings[SETTINGS_KEYS.STORE_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_title,
+    store_banner_text:
+      normalizedSettings[SETTINGS_KEYS.STORE_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_text,
+    store_banner_image_url:
+      normalizedSettings[SETTINGS_KEYS.STORE_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_image_url,
+    store_banner_video_url:
+      normalizedSettings[SETTINGS_KEYS.STORE_BANNER_VIDEO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_video_url,
+    store_banner_media_type:
+      normalizedSettings[SETTINGS_KEYS.STORE_BANNER_MEDIA_TYPE] === 'video' ? 'video' : DEFAULT_PUBLIC_BRANDING_SETTINGS.store_banner_media_type,
+    admin_banner_title:
+      normalizedSettings[SETTINGS_KEYS.ADMIN_BANNER_TITLE] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_title,
+    admin_banner_text:
+      normalizedSettings[SETTINGS_KEYS.ADMIN_BANNER_TEXT] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_text,
+    admin_banner_image_url:
+      normalizedSettings[SETTINGS_KEYS.ADMIN_BANNER_IMAGE_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.admin_banner_image_url,
+  }
+}
+
+
+
+function extractManagedBrandingKey(url: string): string | null {
+  const value = url.trim()
+
+  if (value.startsWith('public/branding/')) return value
+  if (value.startsWith('/public/branding/')) return value.slice(1)
+
+  try {
+    const parsedUrl = new URL(value)
+    if (!parsedUrl.pathname.startsWith('/public/branding/')) return null
+    return parsedUrl.pathname.slice(1)
+  } catch {
+    return null
+  }
 }
 
 const settingsSchema = z.object({
@@ -157,10 +207,10 @@ const settingsSchema = z.object({
 
 adminSettingsRouter.get('/', async (c) => {
   const settings = await loadAllSettings(c.env.DB)
-  return c.json({ success: true, data: settings })
+  return c.json({ success: true, data: normalizeBrandingSettings(settings, c.env.R2_PUBLIC_DOMAIN) })
 })
 
-adminSettingsRouter.put('/', csrfMiddleware(), zValidator('json', settingsSchema), async (c) => {
+adminSettingsRouter.put('/', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', settingsSchema), async (c) => {
   const updates = c.req.valid('json')
   const entries = Object.entries(updates).filter(([key]) =>
     ALLOWED_SETTINGS_KEYS.includes(key as (typeof ALLOWED_SETTINGS_KEYS)[number])
@@ -184,10 +234,10 @@ adminSettingsRouter.put('/', csrfMiddleware(), zValidator('json', settingsSchema
   const newValues = { ...oldValues, ...Object.fromEntries(entries.map(([key, value]) => [key, String(value)])) }
   await logAction(c.env.DB, c.get('adminId'), 'settings.update', 'settings', 'global', oldValues, newValues)
 
-  return c.json({ success: true, data: newValues })
+  return c.json({ success: true, data: normalizeBrandingSettings(newValues, c.env.R2_PUBLIC_DOMAIN) })
 })
 
-adminSettingsRouter.post('/assets/:assetType', csrfMiddleware(), async (c) => {
+adminSettingsRouter.post('/assets/:assetType', rateLimitMiddleware(RATE_LIMITS.brandingUpload), csrfMiddleware(), async (c) => {
   const { assetType } = c.req.param()
   const config = BRANDING_UPLOADS[assetType as keyof typeof BRANDING_UPLOADS]
 
@@ -223,7 +273,7 @@ adminSettingsRouter.post('/assets/:assetType', csrfMiddleware(), async (c) => {
   const publicUrl = `https://${c.env.R2_PUBLIC_DOMAIN}/${r2Key}`
   await upsertSetting(c.env.DB, config.settingKey, publicUrl)
 
-  const previousKey = oldRow?.value ? extractManagedBrandingKey(oldRow.value, c.env.R2_PUBLIC_DOMAIN) : null
+  const previousKey = oldRow?.value ? extractManagedBrandingKey(oldRow.value) : null
   if (previousKey && previousKey !== r2Key) {
     await c.env.R2.delete(previousKey)
   }
@@ -310,7 +360,7 @@ publicSettingsRouter.get('/public', async (c) => {
   return c.json({
     success: true,
     data: {
-      ...getPublicBrandingSettings(settings),
+      ...getPublicBrandingSettings(settings, c.env.R2_PUBLIC_DOMAIN),
       order_expiry_minutes: settings[SETTINGS_KEYS.ORDER_EXPIRY_MINUTES] || String(DEFAULT_ORDER_EXPIRY_MINUTES),
     },
   })

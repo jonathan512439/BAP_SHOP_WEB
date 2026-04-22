@@ -13,41 +13,6 @@ describe('Auth routes', () => {
   beforeAll(async () => {
     await setupTestDb()
 
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
     const session = await generateSessionToken()

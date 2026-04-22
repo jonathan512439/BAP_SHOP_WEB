@@ -20,7 +20,7 @@ export interface Env {
   ADMIN_DOMAIN: string        // ej: "admin.bapshop.com"
 
   // Secretos (definidos en .dev.vars o wrangler secret)
-  ADMIN_PEPPER: string        // Pepper para Argon2id del hash de contraseñas
+  ADMIN_PEPPER: string        // Pepper para PBKDF2-SHA256 del hash de contraseñas
   TURNSTILE_SECRET: string    // Secret key de Cloudflare Turnstile
   TURNSTILE_SECRET_ADMIN?: string
   TURNSTILE_SECRET_STORE?: string

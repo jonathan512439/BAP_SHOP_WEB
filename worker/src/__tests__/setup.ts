@@ -37,6 +37,10 @@ const SCHEMA_STATEMENTS = [
     id TEXT PRIMARY KEY,
     product_id TEXT,
     r2_key TEXT UNIQUE,
+    thumb_r2_key TEXT,
+    card_r2_key TEXT,
+    detail_r2_key TEXT,
+    full_r2_key TEXT,
     is_primary INTEGER DEFAULT 0,
     sort_order INTEGER DEFAULT 0,
     created_at TEXT
@@ -79,9 +83,38 @@ const SCHEMA_STATEMENTS = [
     key TEXT PRIMARY KEY,
     value TEXT
   )`,
+  `CREATE TABLE admins (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
+    password_hash TEXT,
+    created_at TEXT
+  )`,
+  `CREATE TABLE admin_sessions (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT,
+    token_hash TEXT UNIQUE,
+    csrf_token TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT,
+    expires_at TEXT
+  )`,
+  `CREATE TABLE audit_log (
+    id TEXT PRIMARY KEY,
+    admin_id TEXT,
+    action TEXT,
+    entity_type TEXT,
+    entity_id TEXT,
+    old_value TEXT,
+    new_value TEXT,
+    created_at TEXT
+  )`,
 ]
 
 const DROP_STATEMENTS = [
+  'DROP TABLE IF EXISTS audit_log',
+  'DROP TABLE IF EXISTS admin_sessions',
+  'DROP TABLE IF EXISTS admins',
   'DROP TABLE IF EXISTS settings',
   'DROP TABLE IF EXISTS order_items',
   'DROP TABLE IF EXISTS orders',

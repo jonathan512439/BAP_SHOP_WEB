@@ -4,6 +4,7 @@ import worker from '../index'
 import { nowISO } from '@bap-shop/shared'
 import { generateCsrfToken, generateSessionToken } from '../lib/auth'
 import { cleanupTestDb, setupTestDb } from './setup'
+import { normalizeManagedBrandingUrl } from '../routes/admin/settings-audit'
 
 describe('Admin settings and audit routes', () => {
   let sessionToken = ''
@@ -11,41 +12,6 @@ describe('Admin settings and audit routes', () => {
 
   beforeAll(async () => {
     await setupTestDb()
-
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -117,6 +83,22 @@ describe('Admin settings and audit routes', () => {
       whatsapp_header: 'Hola, quiero consultar por mi pedido',
       order_expiry_minutes: '120',
     })
+  })
+
+  it('reescribe URLs antiguas de branding al dominio publico vigente', () => {
+    expect(
+      normalizeManagedBrandingUrl(
+        'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public/branding/logo-1774764736762.jpg',
+        'api.bab-shop.com'
+      )
+    ).toBe('https://api.bab-shop.com/public/branding/logo-1774764736762.jpg')
+
+    expect(
+      normalizeManagedBrandingUrl(
+        'https://external.example.com/public/not-managed/logo.jpg',
+        'api.bab-shop.com'
+      )
+    ).toBe('https://external.example.com/public/not-managed/logo.jpg')
   })
 
   it('actualiza settings validos y registra auditoria', async () => {

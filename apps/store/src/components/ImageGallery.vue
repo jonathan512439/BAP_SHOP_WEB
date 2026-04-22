@@ -4,6 +4,12 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 interface GalleryImage {
   r2_key: string
   url: string
+  variants?: {
+    thumb_url: string | null
+    card_url: string | null
+    detail_url: string | null
+    full_url: string | null
+  } | null
   is_primary: boolean
   sort_order: number
 }
@@ -51,6 +57,11 @@ const selectImage = (url: string) => {
 }
 
 const imageNumber = (r2Key: string) => orderedImages.value.findIndex((image) => image.r2_key === r2Key) + 1
+
+const getVariantUrl = (image: GalleryImage | null, variant: 'thumb_url' | 'detail_url' | 'full_url') => {
+  if (!image) return ''
+  return image.variants?.[variant] || image.url
+}
 
 const navigate = (direction: 'prev' | 'next') => {
   if (!canNavigate.value) {
@@ -120,7 +131,7 @@ onBeforeUnmount(() => {
         :aria-label="`Abrir imagen completa de ${alt}`"
         @click="openLightbox"
       >
-        <img :src="selectedImage.url" :alt="alt" class="hero-image" />
+        <img :src="getVariantUrl(selectedImage, 'detail_url')" :alt="alt" class="hero-image" decoding="async" />
       </button>
       <div v-else class="hero-image empty-image">Sin imagen</div>
 
@@ -141,7 +152,12 @@ onBeforeUnmount(() => {
         :aria-pressed="selectedImage?.url === image.url"
         @click="selectImage(image.url)"
       >
-        <img :src="image.url" :alt="`${alt} miniatura ${imageNumber(image.r2_key)}`" />
+        <img
+          :src="getVariantUrl(image, 'thumb_url')"
+          :alt="`${alt} miniatura ${imageNumber(image.r2_key)}`"
+          loading="lazy"
+          decoding="async"
+        />
       </button>
     </div>
   </div>
@@ -167,7 +183,7 @@ onBeforeUnmount(() => {
     </button>
 
     <div class="lightbox-frame">
-      <img :src="selectedImage.url" :alt="alt" class="lightbox-image" />
+      <img :src="getVariantUrl(selectedImage, 'full_url')" :alt="alt" class="lightbox-image" decoding="async" />
     </div>
 
     <button

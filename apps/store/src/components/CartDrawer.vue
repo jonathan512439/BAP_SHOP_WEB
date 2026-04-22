@@ -36,7 +36,14 @@ const close = () => {
 
         <div v-else class="cart-items">
           <div v-for="item in cartStore.items" :key="item.id" class="cart-item">
-            <img v-if="item.primary_image_url" :src="item.primary_image_url" :alt="item.name" class="item-img" />
+            <img
+              v-if="item.primary_image_variants?.thumb_url || item.primary_image_url"
+              :src="item.primary_image_variants?.thumb_url || item.primary_image_url || ''"
+              :alt="item.name"
+              class="item-img"
+              loading="lazy"
+              decoding="async"
+            />
 
             <div class="item-details">
               <h4>{{ item.name }}</h4>

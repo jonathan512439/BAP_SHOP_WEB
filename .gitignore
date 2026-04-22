@@ -34,3 +34,7 @@ pnpm-debug.log*
 
 # Testing
 coverage/
+
+# Temporary debug/scratch files
+*.tmp
+.tmp/

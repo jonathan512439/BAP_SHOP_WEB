@@ -1,0 +1,71 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: store",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["dev:store"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: admin",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["dev:admin"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "dev: worker",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["dev:worker"],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "typecheck",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["typecheck"],
+      "problemMatcher": []
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["test"],
+      "problemMatcher": []
+    },
+    {
+      "label": "lint",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["lint"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build: store",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["build:store"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build: admin",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["build:admin"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build: worker",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["build:worker"],
+      "problemMatcher": []
+    }
+  ]
+}

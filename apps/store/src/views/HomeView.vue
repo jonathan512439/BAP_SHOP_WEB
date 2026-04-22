@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useCatalogStore } from '../stores/catalog'
 import ProductCard from '../components/ProductCard.vue'
 
 const catalogStore = useCatalogStore()
+const featuredProducts = computed(() => catalogStore.filteredProducts.slice(0, 10))
 
 onMounted(() => {
   catalogStore.fetchCatalog()
@@ -49,7 +50,7 @@ onMounted(() => {
 
     <div v-else class="product-grid">
       <ProductCard 
-        v-for="product in catalogStore.filteredProducts" 
+        v-for="product in featuredProducts" 
         :key="product.id" 
         :product="product"
       />

@@ -163,6 +163,7 @@ onMounted(() => {
         :total-pages="meta.totalPages"
         @previous="fetchLogs(meta.page - 1)"
         @next="fetchLogs(meta.page + 1)"
+        @go-to-page="fetchLogs"
       />
     </div>
   </div>

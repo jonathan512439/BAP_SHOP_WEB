@@ -222,7 +222,14 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 
         <div class="item-list">
           <article v-for="item in cartStore.items" :key="item.id" class="item-card">
-            <img v-if="item.primary_image_url" :src="item.primary_image_url" alt="" class="img-thumb" />
+            <img
+              v-if="item.primary_image_variants?.thumb_url || item.primary_image_url"
+              :src="item.primary_image_variants?.thumb_url || item.primary_image_url || ''"
+              alt=""
+              class="img-thumb"
+              loading="lazy"
+              decoding="async"
+            />
             <div class="item-info">
               <h4>{{ item.name }}</h4>
               <span v-if="item.size" class="size">Talla: {{ item.size }}</span>

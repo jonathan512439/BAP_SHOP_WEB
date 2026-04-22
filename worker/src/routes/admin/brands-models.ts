@@ -2,12 +2,14 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, csrfMiddleware } from '../../middleware'
+import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { generateId, generateSlug, nowISO } from '@bap-shop/shared'
 
 export const adminBrandsRouter = new Hono<HonoEnv>()
 adminBrandsRouter.use('*', authMiddleware())
+adminBrandsRouter.use('/:id/*', validateUuidParams('id'))
+adminBrandsRouter.use('/:id', validateUuidParams('id'))
 
 // GET /admin/brands
 adminBrandsRouter.get('/', async (c) => {
@@ -26,7 +28,7 @@ const brandSchema = z.object({
   name: z.string().min(1).max(100).trim(),
 })
 
-adminBrandsRouter.post('/', csrfMiddleware(), zValidator('json', brandSchema), async (c) => {
+adminBrandsRouter.post('/', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', brandSchema), async (c) => {
   const { name } = c.req.valid('json')
   const slug = generateSlug(name)
 
@@ -43,7 +45,7 @@ adminBrandsRouter.post('/', csrfMiddleware(), zValidator('json', brandSchema), a
 })
 
 // PUT /admin/brands/:id
-adminBrandsRouter.put('/:id', csrfMiddleware(), zValidator('json', brandSchema), async (c) => {
+adminBrandsRouter.put('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', brandSchema), async (c) => {
   const { id } = c.req.param()
   const { name } = c.req.valid('json')
   const slug = generateSlug(name)
@@ -65,7 +67,7 @@ adminBrandsRouter.put('/:id', csrfMiddleware(), zValidator('json', brandSchema),
 })
 
 // PATCH /admin/brands/:id/archive
-adminBrandsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
+adminBrandsRouter.patch('/:id/archive', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const brand = await c.env.DB.prepare('SELECT id FROM brands WHERE id = ?').bind(id).first()
@@ -91,7 +93,7 @@ adminBrandsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
 })
 
 // PATCH /admin/brands/:id/restore
-adminBrandsRouter.patch('/:id/restore', csrfMiddleware(), async (c) => {
+adminBrandsRouter.patch('/:id/restore', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const brand = await c.env.DB.prepare('SELECT id, is_active FROM brands WHERE id = ?').bind(id).first<{ id: string; is_active: number }>()
@@ -108,6 +110,8 @@ adminBrandsRouter.patch('/:id/restore', csrfMiddleware(), async (c) => {
 // ============================================================
 export const adminModelsRouter = new Hono<HonoEnv>()
 adminModelsRouter.use('*', authMiddleware())
+adminModelsRouter.use('/:id/*', validateUuidParams('id'))
+adminModelsRouter.use('/:id', validateUuidParams('id'))
 
 // GET /admin/models?brand_id=
 adminModelsRouter.get('/', async (c) => {
@@ -130,7 +134,7 @@ const modelSchema = z.object({
 })
 
 // POST /admin/models
-adminModelsRouter.post('/', csrfMiddleware(), zValidator('json', modelSchema), async (c) => {
+adminModelsRouter.post('/', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', modelSchema), async (c) => {
   const { brand_id, name } = c.req.valid('json')
   const slug = generateSlug(name)
 
@@ -150,7 +154,7 @@ adminModelsRouter.post('/', csrfMiddleware(), zValidator('json', modelSchema), a
 })
 
 // PUT /admin/models/:id
-adminModelsRouter.put('/:id', csrfMiddleware(), zValidator('json', z.object({ name: z.string().min(1).max(100).trim() })), async (c) => {
+adminModelsRouter.put('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', z.object({ name: z.string().min(1).max(100).trim() })), async (c) => {
   const { id } = c.req.param()
   const { name } = c.req.valid('json')
   const slug = generateSlug(name)
@@ -172,7 +176,7 @@ adminModelsRouter.put('/:id', csrfMiddleware(), zValidator('json', z.object({ na
 })
 
 // PATCH /admin/models/:id/archive
-adminModelsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
+adminModelsRouter.patch('/:id/archive', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const model = await c.env.DB.prepare('SELECT id FROM models WHERE id = ?').bind(id).first()
@@ -196,7 +200,7 @@ adminModelsRouter.patch('/:id/archive', csrfMiddleware(), async (c) => {
 })
 
 // PATCH /admin/models/:id/restore
-adminModelsRouter.patch('/:id/restore', csrfMiddleware(), async (c) => {
+adminModelsRouter.patch('/:id/restore', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const model = await c.env.DB.prepare(

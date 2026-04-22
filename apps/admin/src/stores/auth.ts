@@ -27,7 +27,7 @@ export const useAuthStore = defineStore('auth', () => {
   const login = async (user: string, pass: string, turnstileToken: string) => {
     const { data } = await apiClient<{ data: { adminId: string, username: string, csrfToken: string } }>('/auth/login', {
       method: 'POST',
-      body: { username: user, password: pass, turnstileToken } as any
+      body: { username: user, password: pass, turnstileToken },
     })
     
     adminId.value = data.adminId

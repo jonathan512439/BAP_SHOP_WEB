@@ -17,6 +17,7 @@ const routes = [
   { path: '/audit', name: 'audit', component: () => import('./views/AuditView.vue'), meta: { requiresAuth: true } },
   { path: '/help', name: 'help', component: () => import('./views/HelpView.vue'), meta: { requiresAuth: true } },
   { path: '/login', name: 'login', component: () => import('./views/LoginView.vue') },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
@@ -56,4 +57,10 @@ router.beforeEach(async (to, _from, next) => {
 })
 
 app.use(router)
+
+// Error boundary global — captura errores no manejados en componentes
+app.config.errorHandler = (err, instance, info) => {
+  console.error('[Vue Error]', { error: err, component: instance?.$options?.name ?? 'unknown', info })
+}
+
 app.mount('#app')

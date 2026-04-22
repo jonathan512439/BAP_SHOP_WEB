@@ -34,6 +34,10 @@ interface RawProductForSnapshot {
 interface RawImage {
   product_id: string
   r2_key: string
+  thumb_r2_key: string | null
+  card_r2_key: string | null
+  detail_r2_key: string | null
+  full_r2_key: string | null
   is_primary: number
   sort_order: number
 }
@@ -88,7 +92,7 @@ export async function rebuildCatalogSnapshots(
     const placeholders = productIds.map(() => '?').join(', ')
     const imagesResult = await db
       .prepare(
-        `SELECT product_id, r2_key, is_primary, sort_order
+        `SELECT product_id, r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key, is_primary, sort_order
          FROM product_images
          WHERE product_id IN (${placeholders})
          ORDER BY sort_order ASC`
@@ -107,6 +111,12 @@ export async function rebuildCatalogSnapshots(
   }
 
   const getImageUrl = (r2Key: string) => `https://${r2PublicDomain}/${r2Key}`
+  const getImageVariantUrls = (img: RawImage) => ({
+    thumb_url: getImageUrl(img.thumb_r2_key ?? img.r2_key),
+    card_url: getImageUrl(img.card_r2_key ?? img.r2_key),
+    detail_url: getImageUrl(img.detail_r2_key ?? img.r2_key),
+    full_url: getImageUrl(img.full_r2_key ?? img.r2_key),
+  })
 
   // 3. Determinar promo activa por producto
   const isPromoActive = (p: RawProductForSnapshot): boolean => {
@@ -134,6 +144,7 @@ export async function rebuildCatalogSnapshots(
       discount_pct: promoActive ? p.discount_pct : null,
       physical_condition: p.physical_condition as CatalogCard['physical_condition'],
       primary_image_url: primaryImg ? getImageUrl(primaryImg.r2_key) : null,
+      primary_image_variants: primaryImg ? getImageVariantUrls(primaryImg) : null,
       sort_order: p.sort_order,
     }
   })
@@ -190,6 +201,7 @@ export async function rebuildCatalogSnapshots(
       images: imgs.map((img) => ({
         r2_key: img.r2_key,
         url: getImageUrl(img.r2_key),
+        variants: getImageVariantUrls(img),
         is_primary: img.is_primary === 1,
         sort_order: img.sort_order,
       })),
@@ -232,21 +244,3 @@ export async function rebuildCatalogSnapshots(
   ])
 }
 
-
-/*    Prompt arreglo general
-    Soluciona estos problemas de la mejor manera para tener un sistema robuzto , mantenible y escalable.
-Si alguno compromete el sistema dimelo y buscaremos la mejor solucion.
-
-sold y recién después inserta orders/order_items; si el worker cae entre ambos awaits, puedes dejar stock vendido sin pedido asociado.
-
-Alta: el flujo de negocio quedó incoherente tras pasar checkout a confirmed/sold inmediato. Siguen existiendo pending, reserved, expires_at, order_expiry_minutes y un cron de expiración que ya casi no participa en el flujo real.
-
-Alta: guardas ip_address y user_agent en sesión, pero no los validas nunca al autenticar. Si alguien roba una cookie bap_session, puede reutilizarla desde otro navegador/IP hasta su vencimiento.
-
-Media-Alta: los snapshots de detalle de producto no se limpian cuando un producto deja de estar activo. El catálogo solo reescribe (solo si es posible sin comprometer el resto de las funciones del sistema)
-
-la CSP y headers de seguridad del worker pueden dar una falsa sensación de cobertura. Protegen respuestas del API, pero tus frontends corren en Pages bajo otro origen; si no configuras headers equivalentes allí, store y admin quedan sin esa política. 
-
-
-Alta: el rebuild del catálogo es síncrono y completo ante casi cualquier mutación relevante: pedidos, promociones, activaciones, cambios de imágenes y sort. Eso acopla latencia de escritura con O(n) lecturas de D1 y O(n) escrituras a R2; hoy sirve para catálogo pequeño, pero no escala bien. 
-*/

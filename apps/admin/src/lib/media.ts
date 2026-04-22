@@ -6,6 +6,9 @@ type ImageOptimizationOptions = {
 }
 
 type VideoProgressCallback = (progress: number) => void
+export type ProductImageVariantName = 'thumb' | 'card' | 'detail' | 'full'
+
+export type ProductImageVariants = Record<ProductImageVariantName, File>
 
 const MAX_BRANDING_VIDEO_BYTES = 8 * 1024 * 1024
 const RECOMMENDED_BRANDING_VIDEO_BYTES = 5 * 1024 * 1024
@@ -15,8 +18,16 @@ let ffmpegToolkitPromise: Promise<{
   fetchFile: typeof import('@ffmpeg/util').fetchFile
 }> | null = null
 
+function getBaseFilename(filename: string) {
+  return filename.replace(/\.[^.]+$/, '')
+}
+
 function renameWithExtension(filename: string, extension: string) {
-  return filename.replace(/\.[^.]+$/, '') + extension
+  return getBaseFilename(filename) + extension
+}
+
+function renameWithSuffix(filename: string, suffix: string, extension: string) {
+  return `${getBaseFilename(filename)}-${suffix}${extension}`
 }
 
 function getTargetSize(width: number, height: number, maxWidth: number, maxHeight: number) {
@@ -83,6 +94,35 @@ async function optimizeRasterImage(file: File, options: ImageOptimizationOptions
   const blob = await canvasToBlob(canvas, options.outputType, options.quality)
 
   return new File([blob], renameWithExtension(file.name, '.webp'), {
+    type: options.outputType,
+    lastModified: Date.now(),
+  })
+}
+
+async function optimizeRasterImageFromElement(
+  image: HTMLImageElement,
+  sourceName: string,
+  suffix: string,
+  options: ImageOptimizationOptions
+) {
+  const { width, height } = getTargetSize(image.naturalWidth, image.naturalHeight, options.maxWidth, options.maxHeight)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+
+  const context = canvas.getContext('2d', { alpha: true })
+  if (!context) {
+    throw new Error('No se pudo preparar el optimizador de imagenes en este navegador.')
+  }
+
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(image, 0, 0, width, height)
+
+  const blob = await canvasToBlob(canvas, options.outputType, options.quality)
+
+  return new File([blob], renameWithSuffix(sourceName, suffix, '.webp'), {
     type: options.outputType,
     lastModified: Date.now(),
   })
@@ -157,6 +197,39 @@ export async function optimizeProductImage(file: File) {
     quality: 0.84,
     outputType: 'image/webp',
   })
+}
+
+export async function optimizeProductImageVariants(file: File): Promise<ProductImageVariants> {
+  const image = await loadImage(file)
+
+  const [thumb, card, detail, full] = await Promise.all([
+    optimizeRasterImageFromElement(image, file.name, 'thumb', {
+      maxWidth: 320,
+      maxHeight: 320,
+      quality: 0.72,
+      outputType: 'image/webp',
+    }),
+    optimizeRasterImageFromElement(image, file.name, 'card', {
+      maxWidth: 640,
+      maxHeight: 640,
+      quality: 0.76,
+      outputType: 'image/webp',
+    }),
+    optimizeRasterImageFromElement(image, file.name, 'detail', {
+      maxWidth: 1200,
+      maxHeight: 1200,
+      quality: 0.8,
+      outputType: 'image/webp',
+    }),
+    optimizeRasterImageFromElement(image, file.name, 'full', {
+      maxWidth: 1600,
+      maxHeight: 1600,
+      quality: 0.84,
+      outputType: 'image/webp',
+    }),
+  ])
+
+  return { thumb, card, detail, full }
 }
 
 export async function optimizeBrandingImage(file: File, variant: 'logo' | 'banner') {
@@ -250,6 +323,11 @@ export function describeImageOptimization(file: File, optimizedFile: File) {
   }
 
   return `Imagen optimizada a WebP: ${formatBytes(file.size)} -> ${formatBytes(optimizedFile.size)}.`
+}
+
+export function describeImageVariantOptimization(file: File, variants: ProductImageVariants) {
+  const totalOptimized = Object.values(variants).reduce((total, variant) => total + variant.size, 0)
+  return `Imagen reescalada para web: ${formatBytes(file.size)} -> ${formatBytes(totalOptimized)} en 4 versiones.`
 }
 
 export function describeVideoOptimization(file: File, optimizedFile: File) {

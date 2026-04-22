@@ -17,13 +17,23 @@ export const PRODUCT_STATUS = {
 } as const
 export type ProductStatus = (typeof PRODUCT_STATUS)[keyof typeof PRODUCT_STATUS]
 
-// Transiciones de estado válidas
+// Transiciones de estado válidas para productos
+// NOTA: 'sold' es un estado TERMINAL — no hay transiciones de salida.
+// Si una venta se deshace, se crea un nuevo producto (preserva historial de órdenes).
 export const VALID_STATUS_TRANSITIONS: Record<ProductStatus, ProductStatus[]> = {
   draft: ['active'],
   active: ['hidden', 'reserved', 'sold'],
   hidden: ['active', 'reserved', 'sold'],
   reserved: ['active', 'sold'],
-  sold: ['active', 'hidden'],
+  sold: [],
+}
+
+// Transiciones de estado válidas para órdenes
+export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: [],
+  cancelled: [],
+  expired: [],
 }
 
 export const PHYSICAL_CONDITION = {
@@ -114,5 +124,19 @@ export const DEFAULT_ADMIN_BANNER_TITLE = 'BAP Shop Admin'
 export const DEFAULT_ADMIN_BANNER_TEXT = 'Gestion centralizada de catalogo, promociones, pedidos y ajustes.'
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024 // 5MB
 export const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
+export const PRODUCT_IMAGE_VARIANTS = {
+  THUMB: 'thumb',
+  CARD: 'card',
+  DETAIL: 'detail',
+  FULL: 'full',
+} as const
+export type ProductImageVariant = (typeof PRODUCT_IMAGE_VARIANTS)[keyof typeof PRODUCT_IMAGE_VARIANTS]
+
+export const PRODUCT_IMAGE_VARIANT_LIMITS_BYTES: Record<ProductImageVariant, number> = {
+  thumb: 150 * 1024,
+  card: 450 * 1024,
+  detail: 1100 * 1024,
+  full: 2200 * 1024,
+}
 export const MAX_CART_ITEMS = 20
 export const SESSION_DURATION_HOURS = 8

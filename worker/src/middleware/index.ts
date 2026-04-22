@@ -1,6 +1,7 @@
 export { corsMiddleware } from './cors'
 export { securityHeaders } from './security-headers'
 export { authMiddleware, csrfMiddleware, parseCookie, sha256 } from './auth'
-export { rateLimitMiddleware } from './rate-limit'
+export { RATE_LIMITS, rateLimitMiddleware } from './rate-limit'
 export { databaseMiddleware, enableForeignKeys } from './database'
 export { requestContextMiddleware } from './request-context'
+export { validateUuidParams } from './validate-params'

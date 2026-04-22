@@ -289,6 +289,7 @@ onMounted(() => {
         :total-pages="meta.totalPages"
         @previous="fetchOrders(meta.page - 1)"
         @next="fetchOrders(meta.page + 1)"
+        @go-to-page="fetchOrders"
       />
     </div>
 

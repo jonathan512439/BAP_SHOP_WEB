@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate codebase
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      CI: true
+      VITE_SITE_URL: https://bab-shop.com
+      VITE_API_URL: https://api.bab-shop.com
+      VITE_ASSETS_URL: https://api.bab-shop.com/public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test worker
+        run: pnpm test:worker
+
+      - name: Test store
+        run: pnpm test:store
+
+      - name: Test admin
+        run: pnpm test:admin
+
+      - name: Build store
+        run: pnpm build:store
+
+      - name: Build admin
+        run: pnpm build:admin
+
+      - name: Build worker
+        run: pnpm build:worker

@@ -1,4 +1,4 @@
-import { generateId, nowISO } from '@bap-shop/shared'
+import { generateId, generateOrderCode, nowISO } from '@bap-shop/shared'
 
 // ============================================================
 // Generación y persistencia de Order Code
@@ -7,28 +7,13 @@ import { generateId, nowISO } from '@bap-shop/shared'
 // ============================================================
 
 /**
- * Genera un código de pedido con formato BAP-YYYYMMDD-XXXX.
- * El sufijo es aleatorio en base36 (0-9, A-Z) de 4 caracteres.
- */
-function generateCode(): string {
-  const now = new Date()
-  const date = now.toISOString().slice(0, 10).replace(/-/g, '')
-  const bytes = crypto.getRandomValues(new Uint8Array(4))
-  const suffix = Array.from(bytes)
-    .map((b) => b.toString(36).toUpperCase())
-    .join('')
-    .slice(0, 4)
-  return `BAP-${date}-${suffix}`
-}
-
-/**
  * Genera un order_code único verificando contra la base de datos.
+ * Reutiliza generateOrderCode() de @bap-shop/shared.
  * Reintenta hasta 3 veces en caso de colisión (probabilidad prácticamente nula).
- * Lanza un error si no puede generar uno único tras 3 intentos.
  */
 export async function generateUniqueOrderCode(db: D1Database): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const code = generateCode()
+    const code = generateOrderCode()
     const existing = await db
       .prepare('SELECT id FROM orders WHERE order_code = ? LIMIT 1')
       .bind(code)
@@ -38,6 +23,7 @@ export async function generateUniqueOrderCode(db: D1Database): Promise<string> {
   }
   throw new Error('No se pudo generar un order_code único tras 3 intentos')
 }
+
 
 // ============================================================
 // Creación transaccional de pedido con reserva de artículos
@@ -68,9 +54,14 @@ export interface CreateOrderResult {
 }
 
 /**
- * Crea el pedido y deja todos los artículos en estado reservado hasta que:
- * 1. el admin confirme la venta y los marque como sold, o
- * 2. expire la reserva y el cron los devuelva a active.
+ * Crea el pedido de forma ATÓMICA: reserva de productos + insert de order + items
+ * se ejecutan en un solo db.batch(), que D1 trata como transacción implícita.
+ * 
+ * Si cualquier statement falla, todo el batch se revierte automáticamente.
+ * No se necesita rollback manual.
+ * 
+ * Post-batch: verifica que el UPDATE de reserva haya afectado exactamente
+ * N filas. Si no, lanza ConcurrencyError (otro pedido reservó los mismos items).
  */
 export async function createOrderTransaction(
   db: D1Database,
@@ -83,23 +74,19 @@ export async function createOrderTransaction(
   const productIds = input.items.map((i) => i.productId)
   const placeholders = productIds.map(() => '?').join(', ')
 
-  const reserveResult = await db
-    .prepare(
+  // Construir TODOS los statements para un solo batch atómico
+  const statements: D1PreparedStatement[] = [
+    // 1. Reservar productos (el UPDATE con WHERE status='active' previene doble reserva)
+    db.prepare(
       `UPDATE products
        SET status = 'reserved',
            reserved_order_id = ?,
            reserved_until = ?,
            updated_at = ?
        WHERE id IN (${placeholders}) AND status = 'active'`
-    )
-    .bind(orderId, expiresAt, now, ...productIds)
-    .run()
+    ).bind(orderId, expiresAt, now, ...productIds),
 
-  if ((reserveResult.meta?.changes ?? 0) !== productIds.length) {
-    throw new ConcurrencyError('Uno o más artículos ya no estaban disponibles al reservar')
-  }
-
-  const statements: D1PreparedStatement[] = [
+    // 2. Insertar orden
     db.prepare(
       `INSERT INTO orders
         (id, order_code, customer_name, customer_phone, status,
@@ -110,10 +97,9 @@ export async function createOrderTransaction(
       input.subtotal, input.discount, input.total,
       now, now, expiresAt
     ),
-  ]
 
-  for (const item of input.items) {
-    statements.push(
+    // 3. Insertar items
+    ...input.items.map((item) =>
       db.prepare(
         `INSERT INTO order_items
           (id, order_id, product_id, product_name, product_type,
@@ -124,34 +110,31 @@ export async function createOrderTransaction(
         item.productType, item.productSize ?? null,
         item.unitPrice, item.promoPrice ?? null, item.finalPrice
       )
-    )
-  }
+    ),
+  ]
 
-  try {
-    await db.batch(statements)
-  } catch (error) {
-    await rollbackReservedProducts(db, productIds, now)
-    throw error
+  // Ejecutar batch atómico — si falla, D1 revierte todo automáticamente
+  const results = await db.batch(statements)
+
+  // Verificar que el UPDATE de reserva afectó exactamente los N productos esperados
+  // results[0] corresponde al UPDATE de productos
+  const reserveChanges = results[0]?.meta?.changes ?? 0
+  if (reserveChanges !== productIds.length) {
+    // El batch ya se ejecutó, pero no todos los productos estaban disponibles.
+    // Revertir: liberar los que sí se reservaron y eliminar la orden creada.
+    await db.batch([
+      db.prepare(
+        `UPDATE products
+         SET status = 'active', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
+         WHERE reserved_order_id = ?`
+      ).bind(now, orderId),
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').bind(orderId),
+      db.prepare('DELETE FROM orders WHERE id = ?').bind(orderId),
+    ])
+    throw new ConcurrencyError('Uno o más artículos ya no estaban disponibles al reservar')
   }
 
   return { orderId, orderCode, expiresAt }
-}
-
-async function rollbackReservedProducts(
-  db: D1Database,
-  productIds: string[],
-  now: string
-): Promise<void> {
-  if (productIds.length === 0) return
-  const placeholders = productIds.map(() => '?').join(', ')
-  await db.prepare(
-    `UPDATE products
-     SET status = 'active',
-         reserved_order_id = NULL,
-         reserved_until = NULL,
-         updated_at = ?
-     WHERE id IN (${placeholders})`
-  ).bind(now, ...productIds).run()
 }
 
 export class ConcurrencyError extends Error {
@@ -160,3 +143,4 @@ export class ConcurrencyError extends Error {
     this.name = 'ConcurrencyError'
   }
 }
+

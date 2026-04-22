@@ -3,6 +3,8 @@ import { ApiError, apiClient, setCsrfToken } from '../src/api/client'
 
 describe('apiClient', () => {
   beforeEach(() => {
+    const sessionStorage = new Map<string, string>()
+
     Object.defineProperty(globalThis, 'document', {
       value: {
         cookie: 'bap_csrf=test-csrf-token',
@@ -15,9 +17,13 @@ describe('apiClient', () => {
       value: {
         dispatchEvent: vi.fn(),
         sessionStorage: {
-          getItem: vi.fn(() => null),
-          setItem: vi.fn(),
-          removeItem: vi.fn(),
+          getItem: vi.fn((key: string) => sessionStorage.get(key) ?? null),
+          setItem: vi.fn((key: string, value: string) => {
+            sessionStorage.set(key, value)
+          }),
+          removeItem: vi.fn((key: string) => {
+            sessionStorage.delete(key)
+          }),
         },
       },
       configurable: true,

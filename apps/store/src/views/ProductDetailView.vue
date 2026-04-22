@@ -52,7 +52,7 @@ watch(
       canonicalPath: route.path,
       robots: 'index,follow',
       ogType: 'product',
-      imageUrl: currentProduct.images[0]?.url ?? null,
+      imageUrl: currentProduct.images[0]?.variants?.detail_url ?? currentProduct.images[0]?.url ?? null,
     })
 
     const productUrl = absoluteUrl(route.path)
@@ -63,7 +63,7 @@ watch(
       '@type': 'Product',
       name: currentProduct.name,
       description,
-      image: currentProduct.images.map((image) => image.url),
+      image: currentProduct.images.map((image) => image.variants?.detail_url ?? image.url),
       sku: currentProduct.id,
       url: productUrl,
       brand: currentProduct.brand?.name
@@ -168,6 +168,8 @@ const addToCart = () => {
     physical_condition: product.value.physical_condition,
     primary_image_url:
       product.value.images.find((image) => image.is_primary)?.url ?? product.value.images[0]?.url ?? null,
+    primary_image_variants:
+      product.value.images.find((image) => image.is_primary)?.variants ?? product.value.images[0]?.variants ?? null,
     sort_order: 0,
   })
 }

@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "vue.volar",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "editorconfig.editorconfig",
+    "mikestead.dotenv",
+    "streetsidesoftware.code-spell-checker",
+    "openai.chatgpt"
+  ]
+}

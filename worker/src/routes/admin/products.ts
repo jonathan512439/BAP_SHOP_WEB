@@ -2,14 +2,19 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, csrfMiddleware } from '../../middleware'
+import { RATE_LIMITS, authMiddleware, csrfMiddleware, validateUuidParams, rateLimitMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
-import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
-import { generateId, nowISO, VALID_STATUS_TRANSITIONS } from '@bap-shop/shared'
+import { markCatalogDirty } from '../../lib/catalog-dirty'
+import { generateId, nowISO, PRODUCT_IMAGE_VARIANT_LIMITS_BYTES, VALID_STATUS_TRANSITIONS } from '@bap-shop/shared'
 import type { ProductStatus } from '@bap-shop/shared'
 
 export const adminProductsRouter = new Hono<HonoEnv>()
 adminProductsRouter.use('*', authMiddleware())
+adminProductsRouter.use('/:id/*', validateUuidParams('id'))
+adminProductsRouter.use('/:id', validateUuidParams('id'))
+
+type ProductImageVariantName = 'thumb' | 'card' | 'detail' | 'full'
+const PRODUCT_IMAGE_VARIANT_NAMES: ProductImageVariantName[] = ['thumb', 'card', 'detail', 'full']
 
 // ============================================================
 // Schemas de validación
@@ -73,7 +78,7 @@ adminProductsRouter.get('/', async (c) => {
       `SELECT p.id, p.type, p.status, p.name, p.size, p.price,
               p.physical_condition, p.sort_order, p.created_at, p.updated_at,
               m.name AS model_name, b.name AS brand_name,
-              (SELECT r2_key FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primary_image,
+              (SELECT COALESCE(card_r2_key, r2_key) FROM product_images WHERE product_id = p.id AND is_primary = 1) AS primary_image,
               (SELECT discount_pct FROM product_promotions WHERE product_id = p.id AND enabled = 1) AS promo_pct
        FROM products p
        LEFT JOIN models m ON m.id = p.model_id
@@ -121,7 +126,7 @@ adminProductsRouter.get('/:id', async (c) => {
 // ============================================================
 // POST /admin/products
 // ============================================================
-adminProductsRouter.post('/', csrfMiddleware(), zValidator('json', productSchema), async (c) => {
+adminProductsRouter.post('/', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', productSchema), async (c) => {
   const data = c.req.valid('json')
   const id = generateId()
   const now = nowISO()
@@ -154,7 +159,7 @@ adminProductsRouter.post('/', csrfMiddleware(), zValidator('json', productSchema
 // ============================================================
 // PUT /admin/products/:id
 // ============================================================
-adminProductsRouter.put('/:id', csrfMiddleware(), zValidator('json', productUpdateSchema), async (c) => {
+adminProductsRouter.put('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', productUpdateSchema), async (c) => {
   const { id } = c.req.param()
   const updates = c.req.valid('json')
   const now = nowISO()
@@ -190,7 +195,7 @@ adminProductsRouter.put('/:id', csrfMiddleware(), zValidator('json', productUpda
 
   // Rebuild si el producto es visible
   if (['active', 'hidden'].includes(product.status)) {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await markCatalogDirty(c.env.DB)
   }
 
   return c.json({ success: true })
@@ -199,7 +204,7 @@ adminProductsRouter.put('/:id', csrfMiddleware(), zValidator('json', productUpda
 // ============================================================
 // PATCH /admin/products/:id/status
 // ============================================================
-adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.object({ status: z.enum(['active', 'hidden', 'reserved', 'sold']) })), async (c) => {
+adminProductsRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', z.object({ status: z.enum(['active', 'hidden', 'reserved', 'sold']) })), async (c) => {
   const { id } = c.req.param()
   const { status: newStatus } = c.req.valid('json')
   const now = nowISO()
@@ -235,7 +240,7 @@ adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.
   ).bind(newStatus, now, newStatus, newStatus, id).run()
 
   await logAction(c.env.DB, c.get('adminId'), 'product.status', 'product', id, { status: product.status }, { status: newStatus })
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
 
   return c.json({ success: true, data: { id, status: newStatus } })
 })
@@ -243,7 +248,7 @@ adminProductsRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', z.
 // ============================================================
 // DELETE /admin/products/:id
 // ============================================================
-adminProductsRouter.delete('/:id', csrfMiddleware(), async (c) => {
+adminProductsRouter.delete('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const product = await c.env.DB.prepare(
@@ -273,8 +278,14 @@ adminProductsRouter.delete('/:id', csrfMiddleware(), async (c) => {
   }
 
   const images = await c.env.DB.prepare(
-    'SELECT r2_key FROM product_images WHERE product_id = ?'
-  ).bind(id).all<{ r2_key: string }>()
+    'SELECT r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key FROM product_images WHERE product_id = ?'
+  ).bind(id).all<{
+    r2_key: string
+    thumb_r2_key: string | null
+    card_r2_key: string | null
+    detail_r2_key: string | null
+    full_r2_key: string | null
+  }>()
 
   await c.env.DB.batch([
     c.env.DB.prepare('DELETE FROM product_images WHERE product_id = ?').bind(id),
@@ -282,13 +293,21 @@ adminProductsRouter.delete('/:id', csrfMiddleware(), async (c) => {
     c.env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id),
   ])
 
-  const r2Deletes = images.results.map((image) => c.env.R2.delete(image.r2_key))
+  const keysToDelete = new Set<string>()
+  for (const image of images.results) {
+    keysToDelete.add(image.r2_key)
+    if (image.thumb_r2_key) keysToDelete.add(image.thumb_r2_key)
+    if (image.card_r2_key) keysToDelete.add(image.card_r2_key)
+    if (image.detail_r2_key) keysToDelete.add(image.detail_r2_key)
+    if (image.full_r2_key) keysToDelete.add(image.full_r2_key)
+  }
+  const r2Deletes = Array.from(keysToDelete).map((key) => c.env.R2.delete(key))
   r2Deletes.push(c.env.R2.delete(`public/products/${id}.json`))
   r2Deletes.push(c.env.R2.delete(`products/${id}.json`))
   await Promise.all(r2Deletes)
 
   await logAction(c.env.DB, c.get('adminId'), 'product.delete', 'product', id, product, null)
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
 
   return c.json({ success: true, data: { id } })
 })
@@ -296,12 +315,12 @@ adminProductsRouter.delete('/:id', csrfMiddleware(), async (c) => {
 // ============================================================
 // PATCH /admin/products/:id/sort
 // ============================================================
-adminProductsRouter.patch('/:id/sort', csrfMiddleware(), zValidator('json', z.object({ sort_order: z.number().int().min(0) })), async (c) => {
+adminProductsRouter.patch('/:id/sort', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', z.object({ sort_order: z.number().int().min(0) })), async (c) => {
   const { id } = c.req.param()
   const { sort_order } = c.req.valid('json')
   await c.env.DB.prepare('UPDATE products SET sort_order = ?, updated_at = ? WHERE id = ?')
     .bind(sort_order, nowISO(), id).run()
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
   return c.json({ success: true })
 })
 
@@ -310,13 +329,101 @@ adminProductsRouter.patch('/:id/sort', csrfMiddleware(), zValidator('json', z.ob
 // ============================================================
 
 // POST /admin/products/:id/images
-adminProductsRouter.post('/:id/images', csrfMiddleware(), async (c) => {
+adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpload), csrfMiddleware(), async (c) => {
   const { id } = c.req.param()
 
   const product = await c.env.DB.prepare('SELECT id FROM products WHERE id = ?').bind(id).first()
   if (!product) return c.json({ success: false, error: 'Producto no encontrado' }, 404)
 
   const contentType = c.req.header('Content-Type') ?? ''
+  const imgId = generateId()
+
+  if (contentType.includes('multipart/form-data')) {
+    const parsedBody = await c.req.parseBody()
+    const files: Record<ProductImageVariantName, File> = {} as Record<ProductImageVariantName, File>
+
+    for (const variant of PRODUCT_IMAGE_VARIANT_NAMES) {
+      const file = parsedBody[variant]
+      if (!(file instanceof File)) {
+        return c.json({ success: false, error: `Falta la variante de imagen: ${variant}` }, 422)
+      }
+
+      if (file.type !== 'image/webp') {
+        return c.json({ success: false, error: `La variante ${variant} debe estar en formato WebP.` }, 422)
+      }
+
+      const maxBytes = PRODUCT_IMAGE_VARIANT_LIMITS_BYTES[variant]
+      if (file.size > maxBytes) {
+        return c.json({ success: false, error: `La variante ${variant} supera el limite permitido.` }, 422)
+      }
+
+      files[variant] = file
+    }
+
+    const baseKey = `public/products/${id}/${imgId}`
+    const variantKeys: Record<ProductImageVariantName, string> = {
+      thumb: `${baseKey}/thumb.webp`,
+      card: `${baseKey}/card.webp`,
+      detail: `${baseKey}/detail.webp`,
+      full: `${baseKey}/full.webp`,
+    }
+
+    await Promise.all(
+      PRODUCT_IMAGE_VARIANT_NAMES.map(async (variant) => {
+        await c.env.R2.put(variantKeys[variant], await files[variant].arrayBuffer(), {
+          httpMetadata: { contentType: 'image/webp' },
+        })
+      })
+    )
+
+    const existing = await c.env.DB.prepare(
+      'SELECT COUNT(*) AS cnt FROM product_images WHERE product_id = ?'
+    ).bind(id).first<{ cnt: number }>()
+    const isPrimary = !existing || existing.cnt === 0 ? 1 : 0
+    const now = nowISO()
+
+    await c.env.DB.prepare(
+      `INSERT INTO product_images
+        (id, product_id, r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key, is_primary, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(
+      imgId,
+      id,
+      variantKeys.full,
+      variantKeys.thumb,
+      variantKeys.card,
+      variantKeys.detail,
+      variantKeys.full,
+      isPrimary,
+      existing?.cnt ?? 0,
+      now
+    ).run()
+
+    await logAction(c.env.DB, c.get('adminId'), 'image.upload', 'product_image', imgId, null, {
+      product_id: id,
+      r2_key: variantKeys.full,
+      variants: variantKeys,
+    })
+
+    const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
+    if (productAfter?.status === 'active') {
+      await markCatalogDirty(c.env.DB)
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        id: imgId,
+        r2_key: variantKeys.full,
+        thumb_r2_key: variantKeys.thumb,
+        card_r2_key: variantKeys.card,
+        detail_r2_key: variantKeys.detail,
+        full_r2_key: variantKeys.full,
+        is_primary: isPrimary,
+      },
+    }, 201)
+  }
+
   const allowedMimes = ['image/jpeg', 'image/png', 'image/webp']
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[contentType]
 
@@ -329,7 +436,6 @@ adminProductsRouter.post('/:id/images', csrfMiddleware(), async (c) => {
     return c.json({ success: false, error: 'La imagen supera el límite de 5MB' }, 422)
   }
 
-  const imgId = generateId()
   const r2Key = `public/products/${id}/${imgId}.${ext}`
 
   await c.env.R2.put(r2Key, body, { httpMetadata: { contentType } })
@@ -342,30 +448,41 @@ adminProductsRouter.post('/:id/images', csrfMiddleware(), async (c) => {
 
   const now = nowISO()
   await c.env.DB.prepare(
-    `INSERT INTO product_images (id, product_id, r2_key, is_primary, sort_order, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO product_images (id, product_id, r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key, is_primary, sort_order, created_at)
+     VALUES (?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`
   ).bind(imgId, id, r2Key, isPrimary, existing?.cnt ?? 0, now).run()
 
   await logAction(c.env.DB, c.get('adminId'), 'image.upload', 'product_image', imgId, null, { product_id: id, r2_key: r2Key })
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await markCatalogDirty(c.env.DB)
   }
 
   return c.json({ success: true, data: { id: imgId, r2_key: r2Key, is_primary: isPrimary } }, 201)
 })
 
 // DELETE /admin/products/:id/images/:imgId
-adminProductsRouter.delete('/:id/images/:imgId', csrfMiddleware(), async (c) => {
+adminProductsRouter.delete('/:id/images/:imgId', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id, imgId } = c.req.param()
 
   const img = await c.env.DB.prepare('SELECT * FROM product_images WHERE id = ? AND product_id = ?').bind(imgId, id).first<{
-    id: string; r2_key: string; is_primary: number
+    id: string
+    r2_key: string
+    thumb_r2_key: string | null
+    card_r2_key: string | null
+    detail_r2_key: string | null
+    full_r2_key: string | null
+    is_primary: number
   }>()
   if (!img) return c.json({ success: false, error: 'Imagen no encontrada' }, 404)
 
-  await c.env.R2.delete(img.r2_key)
+  const keysToDelete = new Set([img.r2_key])
+  if (img.thumb_r2_key) keysToDelete.add(img.thumb_r2_key)
+  if (img.card_r2_key) keysToDelete.add(img.card_r2_key)
+  if (img.detail_r2_key) keysToDelete.add(img.detail_r2_key)
+  if (img.full_r2_key) keysToDelete.add(img.full_r2_key)
+  await Promise.all(Array.from(keysToDelete).map((key) => c.env.R2.delete(key)))
   await c.env.DB.prepare('DELETE FROM product_images WHERE id = ?').bind(imgId).run()
 
   // Si era la primaria, asignar la siguiente imagen como primaria
@@ -382,14 +499,14 @@ adminProductsRouter.delete('/:id/images/:imgId', csrfMiddleware(), async (c) => 
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await markCatalogDirty(c.env.DB)
   }
 
   return c.json({ success: true })
 })
 
 // PATCH /admin/products/:id/images/:imgId/primary
-adminProductsRouter.patch('/:id/images/:imgId/primary', csrfMiddleware(), async (c) => {
+adminProductsRouter.patch('/:id/images/:imgId/primary', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id, imgId } = c.req.param()
 
   const img = await c.env.DB.prepare('SELECT id FROM product_images WHERE id = ? AND product_id = ?').bind(imgId, id).first()
@@ -402,14 +519,14 @@ adminProductsRouter.patch('/:id/images/:imgId/primary', csrfMiddleware(), async 
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await markCatalogDirty(c.env.DB)
   }
 
   return c.json({ success: true })
 })
 
 // PATCH /admin/products/:id/images/sort
-adminProductsRouter.patch('/:id/images/sort', csrfMiddleware(), zValidator('json', z.array(z.object({ id: z.string(), sort_order: z.number().int().min(0) }))), async (c) => {
+adminProductsRouter.patch('/:id/images/sort', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', z.array(z.object({ id: z.string(), sort_order: z.number().int().min(0) }))), async (c) => {
   const { id } = c.req.param()
   const items = c.req.valid('json')
 
@@ -421,7 +538,7 @@ adminProductsRouter.patch('/:id/images/sort', csrfMiddleware(), zValidator('json
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await markCatalogDirty(c.env.DB)
   }
 
   return c.json({ success: true })

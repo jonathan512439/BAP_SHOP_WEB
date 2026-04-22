@@ -2,13 +2,15 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, csrfMiddleware } from '../../middleware'
+import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
-import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
+import { markCatalogDirty } from '../../lib/catalog-dirty'
 import { nowISO } from '@bap-shop/shared'
 
 export const adminOrdersRouter = new Hono<HonoEnv>()
 adminOrdersRouter.use('*', authMiddleware())
+adminOrdersRouter.use('/:id/*', validateUuidParams('id'))
+adminOrdersRouter.use('/:id', validateUuidParams('id'))
 
 // GET /admin/orders?status=&page=&limit=&search=
 adminOrdersRouter.get('/', async (c) => {
@@ -85,7 +87,7 @@ const updateNotesSchema = z.object({
   notes: z.string().max(500).optional(),
 })
 
-adminOrdersRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', updateStatusSchema), async (c) => {
+adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', updateStatusSchema), async (c) => {
   const { id } = c.req.param()
   const { status, notes } = c.req.valid('json')
   const now = nowISO()
@@ -139,13 +141,13 @@ adminOrdersRouter.patch('/:id/status', csrfMiddleware(), zValidator('json', upda
   await logAction(c.env.DB, c.get('adminId'), `order.${status}`, 'order', id, { status: order.status }, { status })
 
   // Rebuild catálogo (artículos liberados o vendidos)
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
 
   return c.json({ success: true, data: { id, status } })
 })
 
 // PATCH /admin/orders/:id/notes
-adminOrdersRouter.patch('/:id/notes', csrfMiddleware(), zValidator('json', updateNotesSchema), async (c) => {
+adminOrdersRouter.patch('/:id/notes', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', updateNotesSchema), async (c) => {
   const { id } = c.req.param()
   const { notes } = c.req.valid('json')
   const now = nowISO()

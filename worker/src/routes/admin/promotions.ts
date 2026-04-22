@@ -2,13 +2,15 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
-import { authMiddleware, csrfMiddleware } from '../../middleware'
+import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
-import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
+import { markCatalogDirty } from '../../lib/catalog-dirty'
 import { nowISO } from '@bap-shop/shared'
 
 export const adminPromotionsRouter = new Hono<HonoEnv>()
 adminPromotionsRouter.use('*', authMiddleware())
+adminPromotionsRouter.use('/:productId/*', validateUuidParams('productId'))
+adminPromotionsRouter.use('/:productId', validateUuidParams('productId'))
 
 // GET /admin/promotions
 adminPromotionsRouter.get('/', async (c) => {
@@ -31,7 +33,7 @@ const promotionSchema = z.object({
   message: 'La fecha de fin debe ser posterior a la de inicio',
 })
 
-adminPromotionsRouter.put('/:productId', csrfMiddleware(), zValidator('json', promotionSchema), async (c) => {
+adminPromotionsRouter.put('/:productId', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', promotionSchema), async (c) => {
   const { productId } = c.req.param()
   const { discount_pct, starts_at, ends_at, enabled } = c.req.valid('json')
   const now = nowISO()
@@ -55,13 +57,13 @@ adminPromotionsRouter.put('/:productId', csrfMiddleware(), zValidator('json', pr
   await logAction(c.env.DB, c.get('adminId'), 'promotion.upsert', 'promotion', productId,
     existing ?? null, { discount_pct, starts_at, ends_at, enabled })
 
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
 
   return c.json({ success: true, data: { productId, discount_pct, starts_at, ends_at, enabled } })
 })
 
 // PATCH /admin/promotions/:productId/disable
-adminPromotionsRouter.patch('/:productId/disable', csrfMiddleware(), async (c) => {
+adminPromotionsRouter.patch('/:productId/disable', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { productId } = c.req.param()
   const now = nowISO()
 
@@ -73,7 +75,7 @@ adminPromotionsRouter.patch('/:productId/disable', csrfMiddleware(), async (c) =
   ).bind(now, productId).run()
 
   await logAction(c.env.DB, c.get('adminId'), 'promotion.disable', 'promotion', productId, promo, { enabled: false })
-  await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+  await markCatalogDirty(c.env.DB)
 
   return c.json({ success: true })
 })

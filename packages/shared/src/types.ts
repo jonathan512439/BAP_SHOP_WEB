@@ -43,6 +43,10 @@ export interface ProductImage {
   id: string
   product_id: string
   r2_key: string
+  thumb_r2_key: string | null
+  card_r2_key: string | null
+  detail_r2_key: string | null
+  full_r2_key: string | null
   is_primary: 0 | 1
   sort_order: number
   created_at: string
@@ -147,7 +151,15 @@ export interface CatalogCard {
   discount_pct: number | null
   physical_condition: PhysicalCondition
   primary_image_url: string | null
+  primary_image_variants?: CatalogImageVariants | null
   sort_order: number
+}
+
+export interface CatalogImageVariants {
+  thumb_url: string | null
+  card_url: string | null
+  detail_url: string | null
+  full_url: string | null
 }
 
 /** Detalle completo del producto para el snapshot products/{id}.json */
@@ -165,7 +177,13 @@ export interface CatalogProductDetail {
   promo_price: number | null
   discount_pct: number | null
   physical_condition: PhysicalCondition
-  images: Array<{ r2_key: string; url: string; is_primary: boolean; sort_order: number }>
+  images: Array<{
+    r2_key: string
+    url: string
+    variants?: CatalogImageVariants | null
+    is_primary: boolean
+    sort_order: number
+  }>
 }
 
 /** Datos de filtros del catálogo (snapshot catalog/filters.json) */

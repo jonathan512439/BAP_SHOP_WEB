@@ -9,8 +9,8 @@ describe('Admin promotions routes', () => {
   const ids = {
     brand: '11111111-1111-4111-8111-111111111111',
     model: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    product: 'prod-promo',
-    missingProduct: 'prod-missing',
+    product: '80808080-8080-4080-8080-808080808080',
+    missingProduct: '90909090-9090-4090-8090-909090909090',
   }
 
   let sessionToken = ''
@@ -18,41 +18,6 @@ describe('Admin promotions routes', () => {
 
   beforeAll(async () => {
     await setupTestDb()
-
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()

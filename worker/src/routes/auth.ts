@@ -1,13 +1,50 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
+import { setCookie, deleteCookie } from 'hono/cookie'
+import type { Context } from 'hono'
 import type { HonoEnv } from '../types/env'
-import { rateLimitMiddleware, authMiddleware, csrfMiddleware, parseCookie, sha256 } from '../middleware'
+import { RATE_LIMITS, rateLimitMiddleware, authMiddleware, csrfMiddleware, parseCookie, sha256 } from '../middleware'
 import { verifyPassword, generateSessionToken, generateCsrfToken, hashPassword } from '../lib/auth'
 import { logAction } from '../lib/audit'
+import { verifyTurnstile } from '../lib/turnstile'
 import { generateId, nowISO, addHoursISO, SESSION_DURATION_HOURS } from '@bap-shop/shared'
 
 export const authRouter = new Hono<HonoEnv>()
+
+// ============================================================
+// Helpers de cookies
+// ============================================================
+
+/** Opciones comunes de cookie según el entorno */
+function cookieOptions(isProd: boolean, maxAge: number, httpOnly: boolean) {
+  return {
+    path: '/' as const,
+    sameSite: (isProd ? 'Lax' : 'Strict') as 'Lax' | 'Strict',
+    secure: isProd,
+    httpOnly,
+    maxAge,
+  }
+}
+
+/** Setea las cookies de sesión y CSRF */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setSessionCookies(c: Context<HonoEnv, any>, token: string, csrfToken: string) {
+  const isProd = c.env.ENVIRONMENT === 'production'
+  const maxAge = SESSION_DURATION_HOURS * 3600
+
+  setCookie(c, 'bap_session', encodeURIComponent(token), cookieOptions(isProd, maxAge, true))
+  setCookie(c, 'bap_csrf', csrfToken, cookieOptions(isProd, maxAge, false))
+}
+
+/** Limpia las cookies de sesión y CSRF */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function clearSessionCookies(c: Context<HonoEnv, any>) {
+  const isProd = c.env.ENVIRONMENT === 'production'
+
+  deleteCookie(c, 'bap_session', { path: '/', secure: isProd, sameSite: isProd ? 'Lax' : 'Strict' })
+  deleteCookie(c, 'bap_csrf', { path: '/', secure: isProd, sameSite: isProd ? 'Lax' : 'Strict' })
+}
 
 // ============================================================
 // POST /auth/login
@@ -20,7 +57,7 @@ const loginSchema = z.object({
 
 authRouter.post(
   '/login',
-  rateLimitMiddleware('rl:login', 5, 15 * 60),
+  rateLimitMiddleware(RATE_LIMITS.login),
   zValidator('json', loginSchema),
   async (c) => {
     const { username, password, turnstileToken } = c.req.valid('json')
@@ -66,41 +103,33 @@ authRouter.post(
       .bind(sessionId, admin.id, tokenHash, csrfToken, ip, ua, now, expiresAt)
       .run()
 
-    // 5. Limpiar sesiones expiradas del mismo admin (housekeeping)
+    // 5. Housekeeping: limpiar sesiones expiradas + limitar sesiones activas
+    const MAX_SESSIONS_PER_ADMIN = 5
     await c.env.DB.prepare(
       `DELETE FROM admin_sessions WHERE admin_id = ? AND expires_at < ?`
     )
       .bind(admin.id, now)
       .run()
 
-    // 6. Setear cookies
-    const isProd = c.env.ENVIRONMENT === 'production'
-    const maxAgeSec = SESSION_DURATION_HOURS * 3600
-    const cookieSameSite: 'Lax' | 'Strict' = isProd ? 'Lax' : 'Strict'
+    // Eliminar sesiones más antiguas si se excede el límite
+    await c.env.DB.prepare(
+      `DELETE FROM admin_sessions
+       WHERE admin_id = ? AND id NOT IN (
+         SELECT id FROM admin_sessions
+         WHERE admin_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?
+       )`
+    )
+      .bind(admin.id, admin.id, MAX_SESSIONS_PER_ADMIN)
+      .run()
 
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.append(
-      'Set-Cookie',
-        buildCookie('bap_session', encodeURIComponent(token), {
-          maxAge: maxAgeSec,
-          httpOnly: true,
-          secure: isProd,
-          sameSite: cookieSameSite,
-        })
-      )
-    headers.append(
-      'Set-Cookie',
-        buildCookie('bap_csrf', csrfToken, {
-          maxAge: maxAgeSec,
-          httpOnly: false,
-          secure: isProd,
-          sameSite: cookieSameSite,
-        })
-      )
+    // 6. Setear cookies usando Hono setCookie
+    setSessionCookies(c, token, csrfToken)
 
-    return new Response(JSON.stringify({ success: true, data: { adminId: admin.id, username: admin.username, csrfToken } }), {
-      status: 200,
-      headers,
+    return c.json({
+      success: true,
+      data: { adminId: admin.id, username: admin.username, csrfToken },
     })
   }
 )
@@ -119,32 +148,9 @@ authRouter.post('/logout', authMiddleware(), csrfMiddleware(), async (c) => {
       .run()
   }
 
-  const isProd = c.env.ENVIRONMENT === 'production'
-  const cookieSameSite: 'Lax' | 'Strict' = isProd ? 'Lax' : 'Strict'
-  const headers = new Headers({ 'Content-Type': 'application/json' })
-  headers.append(
-    'Set-Cookie',
-    buildCookie('bap_session', '', {
-      maxAge: 0,
-      httpOnly: true,
-      secure: isProd,
-      sameSite: cookieSameSite,
-    })
-  )
-  headers.append(
-    'Set-Cookie',
-    buildCookie('bap_csrf', '', {
-      maxAge: 0,
-      httpOnly: false,
-      secure: isProd,
-      sameSite: cookieSameSite,
-    })
-  )
+  clearSessionCookies(c)
 
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers,
-  })
+  return c.json({ success: true })
 })
 
 // ============================================================
@@ -173,7 +179,7 @@ authRouter.patch(
   '/password',
   authMiddleware(),
   csrfMiddleware(),
-  rateLimitMiddleware('rl:password-change', 5, 15 * 60),
+  rateLimitMiddleware(RATE_LIMITS.passwordChange),
   zValidator('json', changePasswordSchema),
   async (c) => {
     const { currentPassword, newPassword } = c.req.valid('json')
@@ -217,45 +223,3 @@ authRouter.patch(
     return c.json({ success: true })
   }
 )
-
-// ============================================================
-// Helper: verificar token de Turnstile
-// ============================================================
-async function verifyTurnstile(token: string, secret: string): Promise<boolean> {
-  try {
-    const formData = new FormData()
-    formData.append('secret', secret)
-    formData.append('response', token)
-
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      body: formData,
-    })
-    const data = await res.json<{ success: boolean }>()
-    return data.success === true
-  } catch {
-    return false
-  }
-}
-
-function buildCookie(
-  name: string,
-  value: string,
-  options: {
-    maxAge: number
-    httpOnly: boolean
-    secure: boolean
-    sameSite: 'Strict' | 'Lax'
-  }
-): string {
-  const parts = [`${name}=${value}`, 'Path=/', `SameSite=${options.sameSite}`, `Max-Age=${options.maxAge}`]
-
-  if (options.httpOnly) {
-    parts.push('HttpOnly')
-  }
-  if (options.secure) {
-    parts.push('Secure')
-  }
-
-  return parts.join('; ')
-}

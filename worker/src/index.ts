@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HonoEnv } from './types/env'
 import { corsMiddleware, databaseMiddleware, requestContextMiddleware, securityHeaders } from './middleware'
 import { handleScheduled } from './cron'
+import { logError, serializeError } from './lib/logger'
 
 // Import de Routers
 import { authRouter } from './routes/auth'
@@ -63,12 +64,23 @@ app.route('/admin', adminRouter)
 // Manejadores de Errores
 // ============================================================
 app.notFound((c) => {
-  return c.json({ success: false, error: 'Endpoint no encontrado' }, 404)
+  return c.json({
+    success: false,
+    error: 'Endpoint no encontrado',
+    meta: {
+      requestId: c.get('requestId'),
+    },
+  }, 404)
 })
 
 app.onError((err, c) => {
   const requestId = c.get('requestId')
-  console.error(`[Worker Error][${requestId}]`, err)
+  logError('http_unhandled_error', {
+    requestId,
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+    error: serializeError(err, c.env.ENVIRONMENT !== 'production'),
+  })
 
   return c.json(
     {

@@ -136,20 +136,20 @@ describe('Orders and scheduled jobs', () => {
 
     await handleScheduled('0 4 * * SUN', env)
 
-    const backupDate = nowISO().slice(0, 10)
-    const backupObject = await env.R2.get(`backups/${backupDate}.json`)
+    const backups = await env.R2.list({ prefix: 'backups/d1/' })
+    const backupObject = backups.objects[0] ? await env.R2.get(backups.objects[0].key) : null
     expect(backupObject).not.toBeNull()
 
     const backupPayload = await backupObject!.json<{
       tables: {
-        products: Array<{ id: string }>
-        orders: Array<{ id: string }>
-        settings: Array<{ key: string; value: string }>
+        products: { rows: Array<{ id: string }> }
+        orders: { rows: Array<{ id: string }> }
+        settings: { rows: Array<{ key: string; value: string }> }
       }
     }>()
 
-    expect(backupPayload.tables.products.some((row) => row.id === 'prod-catalog')).toBe(true)
-    expect(backupPayload.tables.orders.some((row) => row.id === 'order-expired')).toBe(true)
-    expect(backupPayload.tables.settings.some((row) => row.key === 'catalog_version')).toBe(true)
+    expect(backupPayload.tables.products.rows.some((row) => row.id === 'prod-catalog')).toBe(true)
+    expect(backupPayload.tables.orders.rows.some((row) => row.id === 'order-expired')).toBe(true)
+    expect(backupPayload.tables.settings.rows.some((row) => row.key === 'catalog_version')).toBe(true)
   })
 })

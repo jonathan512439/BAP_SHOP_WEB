@@ -13,6 +13,7 @@ describe('Admin brands/models routes', () => {
     model1: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     model2: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     model3: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    missingModel: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   }
 
   let sessionToken = ''
@@ -20,41 +21,6 @@ describe('Admin brands/models routes', () => {
 
   beforeAll(async () => {
     await setupTestDb()
-
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -168,7 +134,7 @@ describe('Admin brands/models routes', () => {
   })
 
   it('retorna 404 al archivar un modelo inexistente', async () => {
-    const response = await adminRequest('/admin/models/model-missing/archive', {
+    const response = await adminRequest(`/admin/models/${ids.missingModel}/archive`, {
       method: 'PATCH',
     })
 

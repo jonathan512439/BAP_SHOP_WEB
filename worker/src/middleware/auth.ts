@@ -19,20 +19,31 @@ export const authMiddleware = (): MiddlewareHandler<HonoEnv> => {
     // Hashear el token para comparar contra la base de datos
     const tokenHash = await sha256(sessionToken)
 
-    // Buscar sesión activa (no expirada)
+    // Buscar sesión activa (no expirada) — incluye ip_address para validación
     const now = new Date().toISOString()
     const row = await c.env.DB.prepare(
-      `SELECT s.id, s.admin_id, s.csrf_token, a.username
+      `SELECT s.id, s.admin_id, s.csrf_token, s.ip_address, a.username
        FROM admin_sessions s
        JOIN admins a ON a.id = s.admin_id
        WHERE s.token_hash = ? AND s.expires_at > ?
        LIMIT 1`
     )
       .bind(tokenHash, now)
-      .first<{ id: string; admin_id: string; csrf_token: string; username: string }>()
+      .first<{ id: string; admin_id: string; csrf_token: string; ip_address: string | null; username: string }>()
 
     if (!row) {
       return c.json({ success: false, error: 'Sesión inválida o expirada' }, 401)
+    }
+
+    // Validación estricta de IP — previene session hijacking
+    // Si la IP almacenada existe y no coincide con la IP actual, rechazar
+    const currentIp = c.req.header('CF-Connecting-IP') ?? c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ?? null
+    if (row.ip_address && currentIp && row.ip_address !== currentIp) {
+      // Eliminar la sesión comprometida
+      await c.env.DB.prepare('DELETE FROM admin_sessions WHERE id = ?')
+        .bind(row.id)
+        .run()
+      return c.json({ success: false, error: 'Sesión inválida — IP no coincide' }, 401)
     }
 
     // Inyectar datos del admin en el contexto

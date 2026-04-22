@@ -94,6 +94,7 @@ describe('Catalog Builder', () => {
       promo_price: number | null
       discount_pct: number | null
     }>()
+    const soldDetail = await soldDetailObject!.json<{ id: string; status: string }>()
 
     expect(manifest.catalog_version).toBe(2)
     expect(manifest.total_products).toBe(3)
@@ -116,5 +117,6 @@ describe('Catalog Builder', () => {
     expect(detail.promo_price).toBe(36000)
     expect(detail.images[0]?.is_primary).toBe(true)
     expect(detail.images[0]?.url).toContain('https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/products/prod-1/primary.webp')
+    expect(soldDetail).toMatchObject({ id: 'prod-3', status: 'sold' })
   })
 })

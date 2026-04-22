@@ -461,6 +461,7 @@ watch(filteredModels, (modelList) => {
           :total-pages="brandTotalPages"
           @previous="brandPage = Math.max(1, brandPage - 1)"
           @next="brandPage = Math.min(brandTotalPages, brandPage + 1)"
+          @go-to-page="brandPage = $event"
         />
       </section>
 
@@ -572,6 +573,7 @@ watch(filteredModels, (modelList) => {
           :total-pages="modelTotalPages"
           @previous="modelPage = Math.max(1, modelPage - 1)"
           @next="modelPage = Math.min(modelTotalPages, modelPage + 1)"
+          @go-to-page="modelPage = $event"
         />
       </div>
     </div>

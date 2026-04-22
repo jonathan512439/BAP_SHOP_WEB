@@ -6,46 +6,16 @@ import { generateCsrfToken, generateSessionToken } from '../lib/auth'
 import { cleanupTestDb, setupTestDb } from './setup'
 
 describe('Admin orders routes', () => {
+  const ids = {
+    order1: '11111111-1111-4111-8111-111111111111',
+    order2: '22222222-2222-4222-8222-222222222222',
+  }
+
   let sessionToken = ''
   let csrfToken = ''
 
   beforeAll(async () => {
     await setupTestDb()
-
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -68,17 +38,17 @@ describe('Admin orders routes', () => {
       `INSERT INTO orders
         (id, order_code, customer_name, customer_phone, status, subtotal, discount, total, notes, created_at, updated_at, expires_at)
        VALUES
-        ('order-1', 'BAP-20260327-AAAA', 'Juan Perez', '70000001', 'pending', 45000, 0, 45000, NULL, '2026-03-20T10:00:00.000Z', '2026-03-20T10:00:00.000Z', '2026-03-20T12:00:00.000Z'),
-        ('order-2', 'BAP-20260327-BBBB', 'Maria Lopez', '71111111', 'confirmed', 50000, 5000, 45000, 'Entregado', '2026-03-25T10:00:00.000Z', '2026-03-25T11:00:00.000Z', '2026-03-25T12:00:00.000Z')`
-    ).run()
+        (?, 'BAP-20260327-AAAA', 'Juan Perez', '70000001', 'pending', 45000, 0, 45000, NULL, '2026-03-20T10:00:00.000Z', '2026-03-20T10:00:00.000Z', '2026-03-20T12:00:00.000Z'),
+        (?, 'BAP-20260327-BBBB', 'Maria Lopez', '71111111', 'confirmed', 50000, 5000, 45000, 'Entregado', '2026-03-25T10:00:00.000Z', '2026-03-25T11:00:00.000Z', '2026-03-25T12:00:00.000Z')`
+    ).bind(ids.order1, ids.order2).run()
 
     await env.DB.prepare(
       `INSERT INTO order_items
         (id, order_id, product_id, product_name, product_type, product_size, unit_price, promo_price, final_price)
        VALUES
-        ('item-1', 'order-1', 'prod-1', 'Nike AF1', 'sneaker', '42', 45000, NULL, 45000),
-        ('item-2', 'order-2', 'prod-2', 'Adidas Campus', 'sneaker', '41', 50000, 45000, 45000)`
-    ).run()
+        ('item-1', ?, 'prod-1', 'Nike AF1', 'sneaker', '42', 45000, NULL, 45000),
+        ('item-2', ?, 'prod-2', 'Adidas Campus', 'sneaker', '41', 50000, 45000, 45000)`
+    ).bind(ids.order1, ids.order2).run()
   })
 
   afterAll(async () => {
@@ -118,7 +88,7 @@ describe('Admin orders routes', () => {
     expect(payload.success).toBe(true)
     expect(payload.data).toHaveLength(1)
     expect(payload.data[0]).toMatchObject({
-      id: 'order-2',
+      id: ids.order2,
       order_code: 'BAP-20260327-BBBB',
       item_count: 1,
     })
@@ -129,7 +99,7 @@ describe('Admin orders routes', () => {
   })
 
   it('guarda notas internas y registra auditoria', async () => {
-    const response = await adminRequest('/admin/orders/order-1/notes', {
+    const response = await adminRequest(`/admin/orders/${ids.order1}/notes`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -141,23 +111,23 @@ describe('Admin orders routes', () => {
 
     const payload = await response.json<{ success: boolean; data?: { id: string; notes: string | null } }>()
     const order = await env.DB.prepare('SELECT notes FROM orders WHERE id = ?')
-      .bind('order-1')
+      .bind(ids.order1)
       .first<{ notes: string | null }>()
     const audit = await env.DB.prepare(
-      "SELECT action, entity_type, entity_id, new_value FROM audit_log WHERE entity_id = 'order-1' ORDER BY created_at DESC LIMIT 1"
-    ).first<{ action: string; entity_type: string; entity_id: string; new_value: string | null }>()
+      'SELECT action, entity_type, entity_id, new_value FROM audit_log WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).bind(ids.order1).first<{ action: string; entity_type: string; entity_id: string; new_value: string | null }>()
 
     expect(response.status).toBe(200)
     expect(payload.success).toBe(true)
     expect(payload.data).toEqual({
-      id: 'order-1',
+      id: ids.order1,
       notes: 'Cliente pide entrega por la tarde',
     })
     expect(order?.notes).toBe('Cliente pide entrega por la tarde')
     expect(audit).toMatchObject({
       action: 'order.notes',
       entity_type: 'order',
-      entity_id: 'order-1',
+      entity_id: ids.order1,
     })
     expect(audit?.new_value).toContain('Cliente pide entrega por la tarde')
   })

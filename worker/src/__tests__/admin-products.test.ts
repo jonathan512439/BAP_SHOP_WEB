@@ -9,13 +9,13 @@ describe('Admin products routes', () => {
   const ids = {
     brand: '11111111-1111-4111-8111-111111111111',
     model: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    draftProduct: 'prod-draft',
-    reservedProduct: 'prod-reserved',
-    hiddenProduct: 'prod-hidden',
-    deletableProduct: 'prod-delete',
-    soldProduct: 'prod-sold',
-    pendingDeleteProduct: 'prod-pending-delete',
-    confirmedDeleteProduct: 'prod-confirmed-delete',
+    draftProduct: '10101010-1010-4010-8010-101010101010',
+    reservedProduct: '20202020-2020-4020-8020-202020202020',
+    hiddenProduct: '30303030-3030-4030-8030-303030303030',
+    deletableProduct: '40404040-4040-4040-8040-404040404040',
+    soldProduct: '50505050-5050-4050-8050-505050505050',
+    pendingDeleteProduct: '60606060-6060-4060-8060-606060606060',
+    confirmedDeleteProduct: '70707070-7070-4070-8070-707070707070',
   }
 
   let sessionToken = ''
@@ -23,41 +23,6 @@ describe('Admin products routes', () => {
 
   beforeAll(async () => {
     await setupTestDb()
-
-    await env.DB.prepare(
-      `CREATE TABLE admins (
-        id TEXT PRIMARY KEY,
-        username TEXT NOT NULL UNIQUE,
-        password_hash TEXT NOT NULL,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE admin_sessions (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        token_hash TEXT NOT NULL UNIQUE,
-        csrf_token TEXT NOT NULL,
-        ip_address TEXT,
-        user_agent TEXT,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      )`
-    ).run()
-
-    await env.DB.prepare(
-      `CREATE TABLE audit_log (
-        id TEXT PRIMARY KEY,
-        admin_id TEXT NOT NULL,
-        action TEXT NOT NULL,
-        entity_type TEXT NOT NULL,
-        entity_id TEXT NOT NULL,
-        old_value TEXT,
-        new_value TEXT,
-        created_at TEXT NOT NULL
-      )`
-    ).run()
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -265,7 +230,7 @@ describe('Admin products routes', () => {
     })
   })
 
-  it('permite reactivar un producto vendido cuando fue marcado por error', async () => {
+  it('rechaza reactivar un producto vendido por ser un estado terminal', async () => {
     const response = await adminRequest(`/admin/products/${ids.soldProduct}/status`, {
       method: 'PATCH',
       headers: {
@@ -274,15 +239,15 @@ describe('Admin products routes', () => {
       body: JSON.stringify({ status: 'active' }),
     })
 
-    const payload = await response.json<{ success: boolean; data?: { status: string } }>()
+    const payload = await response.json<{ success: boolean; error: string }>()
     const product = await env.DB.prepare('SELECT status FROM products WHERE id = ?')
       .bind(ids.soldProduct)
       .first<{ status: string }>()
 
-    expect(response.status).toBe(200)
-    expect(payload.success).toBe(true)
-    expect(payload.data?.status).toBe('active')
-    expect(product?.status).toBe('active')
+    expect(response.status).toBe(409)
+    expect(payload.success).toBe(false)
+    expect(payload.error).toContain('No puedes cambiar')
+    expect(product?.status).toBe('sold')
   })
 
   it('elimina un producto sin pedidos abiertos y borra sus imagenes asociadas', async () => {

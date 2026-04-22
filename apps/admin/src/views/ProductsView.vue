@@ -357,6 +357,7 @@ onMounted(() => {
       :total-pages="meta.totalPages"
       @previous="fetchProducts(meta.page - 1)"
       @next="fetchProducts(meta.page + 1)"
+      @go-to-page="fetchProducts"
     />
 
     <BaseConfirmModal

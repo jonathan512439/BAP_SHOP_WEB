@@ -92,6 +92,7 @@ onMounted(() => {
       :total-pages="totalPages"
       @previous="goToPage(currentPage - 1)"
       @next="goToPage(currentPage + 1)"
+      @go-to-page="goToPage"
     />
   </section>
 </template>
@@ -112,7 +113,7 @@ onMounted(() => {
 
 @media (min-width: 960px) {
   .hero {
-    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   }
 }
 
@@ -142,6 +143,10 @@ onMounted(() => {
   gap: 0.35rem;
   align-self: stretch;
   justify-content: center;
+  align-items: center;
+  min-height: 128px;
+  padding: 1.25rem 1.5rem;
+  text-align: center;
 }
 
 .meta-label {

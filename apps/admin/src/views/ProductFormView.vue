@@ -3,8 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ALLOWED_IMAGE_MIME_TYPES,
-  MAX_IMAGE_SIZE_BYTES,
   PHYSICAL_CONDITION_LABELS,
+  PRODUCT_IMAGE_VARIANT_LIMITS_BYTES,
   PRODUCT_STATUS,
   type Brand,
   type Model,
@@ -15,7 +15,12 @@ import BaseConfirmModal from '../components/BaseConfirmModal.vue'
 import FormField from '../components/FormField.vue'
 import FormSelect from '../components/FormSelect.vue'
 import FormTextarea from '../components/FormTextarea.vue'
-import { formatBytes, optimizeProductImage } from '../lib/media'
+import {
+  describeImageVariantOptimization,
+  formatBytes,
+  optimizeProductImageVariants,
+  type ProductImageVariants,
+} from '../lib/media'
 
 type ProductStatus = 'draft' | 'active' | 'hidden' | 'reserved' | 'sold'
 
@@ -34,14 +39,28 @@ interface ProductDetailResponse {
   images: Array<{
     id: string
     r2_key: string
+    thumb_r2_key?: string | null
+    card_r2_key?: string | null
+    detail_r2_key?: string | null
+    full_r2_key?: string | null
     is_primary: 0 | 1
   }>
 }
 
 interface QueuedImage {
-  file: File
+  variants: ProductImageVariants
   originalSize: number
+  optimizedSize: number
   previewUrl: string
+  summary: string
+}
+
+type FeedbackModalState = {
+  title: string
+  message: string
+  variant: 'danger' | 'warning' | 'neutral'
+  confirmLabel: string
+  redirectTo?: string
 }
 
 const MAX_SOURCE_IMAGE_SIZE_BYTES = 20 * 1024 * 1024
@@ -65,6 +84,7 @@ const formError = ref('')
 const activationErrors = ref<string[]>([])
 const imageIdPendingDelete = ref<string | null>(null)
 const isDeletingImage = ref(false)
+const feedbackModal = ref<FeedbackModalState | null>(null)
 
 const form = ref({
   name: '',
@@ -161,6 +181,15 @@ const resetServerErrors = () => {
   activationErrors.value = []
 }
 
+const closeFeedbackModal = () => {
+  const redirectTo = feedbackModal.value?.redirectTo
+  feedbackModal.value = null
+
+  if (redirectTo) {
+    router.push(redirectTo)
+  }
+}
+
 const revokeQueuedImageUrls = () => {
   for (const image of queuedImages.value) {
     URL.revokeObjectURL(image.previewUrl)
@@ -232,6 +261,10 @@ const getImagePreviewUrl = (r2Key: string) => {
   return `${publicAssetsBase}/${r2Key.replace(/^public\//, '')}`
 }
 
+const getExistingImagePreviewUrl = (image: ProductDetailResponse['images'][number]) => {
+  return getImagePreviewUrl(image.thumb_r2_key || image.card_r2_key || image.r2_key)
+}
+
 const handleFileChange = async (event: Event) => {
   resetServerErrors()
 
@@ -253,17 +286,24 @@ const handleFileChange = async (event: Event) => {
         continue
       }
 
-      const optimizedFile = await optimizeProductImage(file)
+      const variants = await optimizeProductImageVariants(file)
+      const oversizedVariant = Object.entries(variants).find(([variant, optimizedFile]) => {
+        const limit = PRODUCT_IMAGE_VARIANT_LIMITS_BYTES[variant as keyof typeof PRODUCT_IMAGE_VARIANT_LIMITS_BYTES]
+        return optimizedFile.size > limit
+      })
 
-      if (optimizedFile.size > MAX_IMAGE_SIZE_BYTES) {
-        formError.value = `La imagen ${file.name} sigue siendo demasiado pesada incluso despues de optimizarla.`
+      if (oversizedVariant) {
+        const [variant, optimizedFile] = oversizedVariant
+        formError.value = `La version ${variant} de ${file.name} sigue siendo demasiado pesada (${formatBytes(optimizedFile.size)}).`
         continue
       }
 
       queuedImages.value.push({
-        file: optimizedFile,
+        variants,
         originalSize: file.size,
-        previewUrl: URL.createObjectURL(optimizedFile),
+        optimizedSize: Object.values(variants).reduce((total, variantFile) => total + variantFile.size, 0),
+        previewUrl: URL.createObjectURL(variants.card),
+        summary: describeImageVariantOptimization(file, variants),
       })
     }
   } catch (error: any) {
@@ -341,13 +381,15 @@ const saveProduct = async () => {
 
     if (queuedImages.value.length > 0) {
       for (const queuedImage of queuedImages.value) {
+        const imagePayload = new FormData()
+        imagePayload.append('thumb', queuedImage.variants.thumb)
+        imagePayload.append('card', queuedImage.variants.card)
+        imagePayload.append('detail', queuedImage.variants.detail)
+        imagePayload.append('full', queuedImage.variants.full)
+
         await apiClient(`/admin/products/${newProductId}/images`, {
           method: 'POST',
-          body: queuedImage.file,
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': queuedImage.file.type,
-          },
+          body: imagePayload,
         })
       }
     }
@@ -361,13 +403,24 @@ const saveProduct = async () => {
 
     revokeQueuedImageUrls()
     queuedImages.value = []
-    router.push('/products')
-  } catch (error) {
-    if (error instanceof ApiError) {
-      formError.value = error.message
-    } else {
-      formError.value = 'Error guardando producto.'
+
+    feedbackModal.value = {
+      title: isEdit ? 'Producto actualizado' : 'Producto creado',
+      message: isEdit
+        ? 'Los cambios del producto se guardaron correctamente. El catalogo se actualizara con la informacion vigente.'
+        : 'El producto fue creado correctamente. Ya puedes revisarlo desde el listado de productos.',
+      variant: 'neutral',
+      confirmLabel: 'Volver al listado',
+      redirectTo: '/products',
     }
+  } catch (error) {
+    let errorMessage = 'Error guardando producto.'
+
+    if (error instanceof ApiError) {
+      errorMessage = error.message
+    }
+
+    formError.value = errorMessage
 
     const apiError = error as { status?: number; message?: string }
     if (apiError.status === 422 && typeof error === 'object' && error !== null) {
@@ -375,6 +428,16 @@ const saveProduct = async () => {
       if (Array.isArray(maybeData?.errors)) {
         activationErrors.value = maybeData.errors
       }
+    }
+
+    feedbackModal.value = {
+      title: 'No se pudo guardar el producto',
+      message:
+        activationErrors.value.length > 0
+          ? 'El producto no cumple todos los requisitos para activarse. Revisa los faltantes marcados en el formulario.'
+          : errorMessage,
+      variant: 'danger',
+      confirmLabel: 'Entendido',
     }
   } finally {
     isSaving.value = false
@@ -542,7 +605,7 @@ const setPrimaryImage = async (imgId: string) => {
         <div v-if="isEdit" class="images-manager">
           <div class="existing-images">
             <div v-for="img in images" :key="img.id" class="image-box" :class="{ primary: img.is_primary }">
-              <img :src="getImagePreviewUrl(img.r2_key)" alt="" />
+              <img :src="getExistingImagePreviewUrl(img)" alt="" />
               <div class="img-actions">
                 <button v-if="!img.is_primary" type="button" class="img-btn" title="Principal" @click="setPrimaryImage(img.id)">
                   Principal
@@ -574,11 +637,12 @@ const setPrimaryImage = async (imgId: string) => {
         <p v-if="isOptimizingImages" class="text-secondary text-sm mt-2">Optimizando imagenes para el catalogo...</p>
 
         <div v-if="queuedImages.length > 0" class="queued-grid mt-4">
-          <div v-for="(image, index) in queuedImages" :key="`${image.file.name}-${index}`" class="queued-card">
+          <div v-for="(image, index) in queuedImages" :key="`${image.previewUrl}-${index}`" class="queued-card">
             <img :src="image.previewUrl" alt="" />
             <div class="queued-meta">
-              <strong>{{ image.file.name }}</strong>
-              <span>{{ formatBytes(image.originalSize) }} -> {{ formatBytes(image.file.size) }}</span>
+              <strong>Imagen optimizada</strong>
+              <span>{{ formatBytes(image.originalSize) }} -> {{ formatBytes(image.optimizedSize) }}</span>
+              <span>{{ image.summary }}</span>
             </div>
             <button type="button" class="btn btn-secondary btn-sm" @click="removeQueuedImage(index)">Quitar</button>
           </div>
@@ -600,6 +664,17 @@ const setPrimaryImage = async (imgId: string) => {
         :is-loading="isDeletingImage"
         @cancel="closeDeleteImageModal"
         @confirm="deleteImage"
+      />
+
+      <BaseConfirmModal
+        :is-open="!!feedbackModal"
+        :title="feedbackModal?.title || 'Aviso'"
+        :message="feedbackModal?.message || ''"
+        :confirm-label="feedbackModal?.confirmLabel || 'Entendido'"
+        :variant="feedbackModal?.variant || 'neutral'"
+        single-action
+        @cancel="closeFeedbackModal"
+        @confirm="closeFeedbackModal"
       />
     </div>
   </div>

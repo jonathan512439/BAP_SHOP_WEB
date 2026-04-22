@@ -2,10 +2,13 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../types/env'
-import { rateLimitMiddleware } from '../middleware'
+import { RATE_LIMITS, rateLimitMiddleware } from '../middleware'
 import { validateAndPriceCart, calculateTotals, buildPriceChanges } from '../lib/pricing'
 import { createOrderTransaction, ConcurrencyError } from '../lib/orders'
-import { rebuildCatalogSnapshots } from '../lib/catalog-builder'
+import { markCatalogDirty } from '../lib/catalog-dirty'
+import { verifyTurnstile } from '../lib/turnstile'
+import { loadSettingsByKeys } from '../lib/settings'
+import { logError, serializeError } from '../lib/logger'
 import { buildWhatsappMessage, buildWhatsappUrl, validateName, validatePhone, MAX_CART_ITEMS } from '@bap-shop/shared'
 
 export const ordersRouter = new Hono<HonoEnv>()
@@ -34,7 +37,7 @@ const createOrderSchema = z.object({
 
 ordersRouter.post(
   '/',
-  rateLimitMiddleware('rl:orders', 10, 60 * 60),
+  rateLimitMiddleware(RATE_LIMITS.publicOrders),
   zValidator('json', createOrderSchema),
   async (c) => {
     const { customerName, customerPhone, turnstileToken, items } = c.req.valid('json')
@@ -111,7 +114,7 @@ ordersRouter.post(
     }
 
     // 6. Construir mensaje y URL de WhatsApp
-    const settings = await getSettings(c.env.DB)
+    const settings = await getWhatsappSettings(c.env.DB)
     const orderItems = valid.map((i) => ({
       id: `item_${i.productId}`,
       order_id: orderId,
@@ -146,10 +149,14 @@ ordersRouter.post(
 
     // 7. Rebuild síncrono del catálogo (artículos → reserved)
     try {
-      await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+      await markCatalogDirty(c.env.DB)
     } catch (err) {
       // El catálogo se reconstruirá en el próximo cron. El pedido ya fue creado.
-      console.error('[catalog-builder] Error en rebuild post-pedido:', err)
+      logError('catalog_dirty_mark_failed', {
+        requestId: c.get('requestId'),
+        orderId,
+        error: serializeError(err, c.env.ENVIRONMENT !== 'production'),
+      })
     }
 
     // 8. Calcular priceChanges para notificar al frontend
@@ -171,32 +178,20 @@ ordersRouter.post(
 // Helpers
 // ============================================================
 
-async function verifyTurnstile(token: string, secret: string): Promise<boolean> {
-  try {
-    const formData = new FormData()
-    formData.append('secret', secret)
-    formData.append('response', token)
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      body: formData,
-    })
-    const data = await res.json<{ success: boolean }>()
-    return data.success === true
-  } catch {
-    return false
-  }
-}
 
-async function getSettings(db: D1Database): Promise<{
+
+async function getWhatsappSettings(db: D1Database): Promise<{
   whatsapp_number: string
   store_name: string
   whatsapp_header: string
   whatsapp_template: string
 }> {
-  const rows = await db
-    .prepare(`SELECT key, value FROM settings WHERE key IN ('whatsapp_number','store_name','whatsapp_header','whatsapp_template')`)
-    .all<{ key: string; value: string }>()
-  const map = Object.fromEntries(rows.results.map((r) => [r.key, r.value]))
+  const map = await loadSettingsByKeys(db, [
+    'whatsapp_number',
+    'store_name',
+    'whatsapp_header',
+    'whatsapp_template',
+  ])
   return {
     whatsapp_number: map['whatsapp_number'] ?? '',
     store_name: map['store_name'] ?? 'BAP Shop',

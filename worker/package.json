@@ -9,6 +9,8 @@
     "build": "tsc --noEmit",
     "hash-password": "node ./scripts/hash-password.mjs",
     "verify-password": "node ./scripts/verify-password.mjs",
+    "migrate:image-variants": "node ./scripts/migrate-product-image-variants.mjs",
+    "backup:d1": "node ./scripts/backup-d1-to-r2.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

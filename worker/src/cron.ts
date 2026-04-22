@@ -1,6 +1,9 @@
 import type { Env } from './types/env'
 import { nowISO } from '@bap-shop/shared'
 import { rebuildCatalogSnapshots } from './lib/catalog-builder'
+import { loadSettingsByKeys, upsertSetting } from './lib/settings'
+import { createDatabaseBackup } from './lib/backups'
+import { logInfo, logWarn } from './lib/logger'
 import { enableForeignKeys } from './middleware'
 
 /**
@@ -18,6 +21,7 @@ export async function handleScheduled(
     case '*/5 * * * *':
       await expireOrders(env, now)
       await expirePromotions(env, now)
+      await rebuildIfDirty(env)
       break
     case '0 * * * *':
       await expirePromotions(env, now)
@@ -30,7 +34,7 @@ export async function handleScheduled(
       await backupDatabase(env)
       break
     default:
-      console.warn(`[cron] Cron trigger desconocido: ${cronType}`)
+      logWarn('cron_unknown_trigger', { cronType })
   }
 }
 
@@ -72,7 +76,7 @@ async function expireOrders(env: Env, now: string): Promise<void> {
   
   // 4. Reconstruir catálogo ya que hay artículos nuevos disponibles
   await rebuildCatalogSnapshots(env.DB, env.R2, env.R2_PUBLIC_DOMAIN)
-  console.log(`[cron] Expirados ${orderIds.length} pedidos.`)
+  logInfo('cron_orders_expired', { count: orderIds.length })
 }
 
 /**
@@ -85,7 +89,7 @@ async function expirePromotions(env: Env, now: string): Promise<void> {
 
   if (result.meta?.changes && result.meta.changes > 0) {
     await rebuildCatalogSnapshots(env.DB, env.R2, env.R2_PUBLIC_DOMAIN)
-    console.log(`[cron] ${result.meta.changes} promociones vencidas deshabilitadas.`)
+    logInfo('cron_promotions_expired', { count: result.meta.changes })
   }
 }
 
@@ -96,7 +100,47 @@ async function cleanupSessions(env: Env, now: string): Promise<void> {
   const result = await env.DB.prepare(
     `DELETE FROM admin_sessions WHERE expires_at <= ?`
   ).bind(now).run()
-  console.log(`[cron] ${result.meta?.changes ?? 0} sesiones expiradas eliminadas.`)
+  logInfo('cron_sessions_cleaned', { count: result.meta?.changes ?? 0 })
+}
+
+/**
+ * Rebuild diferido del catálogo: solo ejecuta si el flag catalog_dirty está en '1'.
+ * Después del rebuild, limpia JSONs huérfanos en R2 (productos ocultos/eliminados).
+ */
+async function rebuildIfDirty(env: Env): Promise<void> {
+  const settings = await loadSettingsByKeys(env.DB, ['catalog_dirty'])
+  if (settings['catalog_dirty'] !== '1') return
+
+  // Rebuild completo
+  await rebuildCatalogSnapshots(env.DB, env.R2, env.R2_PUBLIC_DOMAIN)
+
+  // Limpiar flag
+  await upsertSetting(env.DB, 'catalog_dirty', '0')
+
+  // Limpiar JSONs huérfanos: obtener IDs visibles y comparar con R2
+  const visibleIds = await env.DB.prepare(
+    `SELECT id FROM products WHERE status IN ('active', 'sold')`
+  ).all<{ id: string }>()
+  const validIds = new Set(visibleIds.results.map((r) => r.id))
+
+  // Listar objetos en public/products/
+  const listed = await env.R2.list({ prefix: 'public/products/' })
+  const deleteKeys: string[] = []
+  for (const obj of listed.objects) {
+    // Extraer ID del key: public/products/{id}.json
+    const match = obj.key.match(/^public\/products\/(.+)\.json$/)
+    if (match && !validIds.has(match[1])) {
+      deleteKeys.push(obj.key)
+    }
+  }
+
+  if (deleteKeys.length > 0) {
+    // R2 delete soporta hasta 1000 keys por llamada
+    await Promise.all(deleteKeys.map((key) => env.R2.delete(key)))
+    logInfo('cron_orphan_product_snapshots_deleted', { count: deleteKeys.length })
+  }
+
+  logInfo('cron_catalog_rebuilt', { reason: 'dirty_flag' })
 }
 
 /**
@@ -104,40 +148,17 @@ async function cleanupSessions(env: Env, now: string): Promise<void> {
  * por ahora lo dejamos como stub funcional)
  */
 async function backupDatabase(env: Env): Promise<void> {
-  const generatedAt = nowISO()
-  const backupDate = generatedAt.slice(0, 10)
-
-  const [products, productImages, productPromotions, orders, orderItems, settings] = await Promise.all([
-    selectAll(env.DB, 'products'),
-    selectAll(env.DB, 'product_images'),
-    selectAll(env.DB, 'product_promotions'),
-    selectAll(env.DB, 'orders'),
-    selectAll(env.DB, 'order_items'),
-    selectAll(env.DB, 'settings'),
-  ])
-
-  const payload = {
-    generatedAt,
-    tables: {
-      products,
-      product_images: productImages,
-      product_promotions: productPromotions,
-      orders,
-      order_items: orderItems,
-      settings,
-    },
-  }
-
-  await env.R2.put(`backups/${backupDate}.json`, JSON.stringify(payload), {
-    httpMetadata: {
-      contentType: 'application/json',
-    },
+  const result = await createDatabaseBackup(env.DB, env.R2, {
+    environment: env.ENVIRONMENT,
   })
 
-  console.log(`[cron] Backup semanal generado en backups/${backupDate}.json`)
+  logInfo('cron_d1_backup_created', {
+    key: result.key,
+    bytes: result.bytes,
+  })
+  if (result.deletedBackups.length > 0) {
+    logInfo('cron_d1_backups_pruned', { count: result.deletedBackups.length })
+  }
 }
 
-async function selectAll(db: D1Database, table: string): Promise<Record<string, unknown>[]> {
-  const result = await db.prepare(`SELECT * FROM ${table}`).all<Record<string, unknown>>()
-  return result.results
-}
+// Allowlist de tablas permitidas para backup — previene SQL injection

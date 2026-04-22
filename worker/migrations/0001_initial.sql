@@ -9,7 +9,7 @@ PRAGMA foreign_keys = ON;
 -- ============================================================
 -- MARCAS (solo para zapatillas)
 -- ============================================================
-CREATE TABLE brands (
+CREATE TABLE IF NOT EXISTS brands (
   id        TEXT PRIMARY KEY,
   name      TEXT NOT NULL UNIQUE,
   slug      TEXT NOT NULL UNIQUE,
@@ -20,7 +20,7 @@ CREATE TABLE brands (
 -- ============================================================
 -- MODELOS (solo para zapatillas, pertenecen a una marca)
 -- ============================================================
-CREATE TABLE models (
+CREATE TABLE IF NOT EXISTS models (
   id        TEXT PRIMARY KEY,
   brand_id  TEXT NOT NULL REFERENCES brands(id) ON DELETE RESTRICT,
   name      TEXT NOT NULL,
@@ -51,7 +51,7 @@ CREATE TABLE models (
 --   type='sneaker': model_id y size obligatorios (validado en capa de aplicación)
 --   type='other':   model_id y size deben ser NULL (validado en capa de aplicación)
 -- ============================================================
-CREATE TABLE products (
+CREATE TABLE IF NOT EXISTS products (
   id                TEXT PRIMARY KEY,
   type              TEXT NOT NULL CHECK(type IN ('sneaker', 'other')),
   status            TEXT NOT NULL DEFAULT 'draft'
@@ -75,7 +75,7 @@ CREATE TABLE products (
 -- IMÁGENES DE PRODUCTOS
 -- Una sola imagen principal por producto (garantizado por índice único parcial)
 -- ============================================================
-CREATE TABLE product_images (
+CREATE TABLE IF NOT EXISTS product_images (
   id         TEXT PRIMARY KEY,
   product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
   r2_key     TEXT NOT NULL UNIQUE,   -- clave única en el bucket R2
@@ -85,7 +85,7 @@ CREATE TABLE product_images (
 );
 
 -- Garantiza que solo puede haber UNA imagen con is_primary=1 por producto
-CREATE UNIQUE INDEX idx_product_one_primary
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_one_primary
   ON product_images(product_id) WHERE is_primary = 1;
 
 -- ============================================================
@@ -94,7 +94,7 @@ CREATE UNIQUE INDEX idx_product_one_primary
 -- La vigencia real también depende de starts_at y ends_at.
 -- Una promo es aplicable si: enabled=1 AND starts_at <= now AND ends_at > now
 -- ============================================================
-CREATE TABLE product_promotions (
+CREATE TABLE IF NOT EXISTS product_promotions (
   product_id   TEXT PRIMARY KEY REFERENCES products(id) ON DELETE CASCADE,
   discount_pct INTEGER NOT NULL CHECK(discount_pct BETWEEN 1 AND 99),
   starts_at    TEXT NOT NULL,
@@ -109,7 +109,7 @@ CREATE TABLE product_promotions (
 -- PEDIDOS
 -- expires_at = created_at + order_expiry_minutes (de settings)
 -- ============================================================
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
   id             TEXT PRIMARY KEY,
   order_code     TEXT NOT NULL UNIQUE,   -- formato: BAP-20260322-A7K3
   customer_name  TEXT NOT NULL,
@@ -130,7 +130,7 @@ CREATE TABLE orders (
 -- Snapshot del producto al momento de la compra.
 -- product_id sin FK intencional: preserva historial aunque el producto cambie.
 -- ============================================================
-CREATE TABLE order_items (
+CREATE TABLE IF NOT EXISTS order_items (
   id           TEXT PRIMARY KEY,
   order_id     TEXT NOT NULL REFERENCES orders(id) ON DELETE RESTRICT,
   product_id   TEXT NOT NULL,           -- sin FK intencional
@@ -146,7 +146,7 @@ CREATE TABLE order_items (
 -- ADMINISTRADORES
 -- password_hash: Argon2id con pepper del entorno
 -- ============================================================
-CREATE TABLE admins (
+CREATE TABLE IF NOT EXISTS admins (
   id            TEXT PRIMARY KEY,
   username      TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
@@ -159,7 +159,7 @@ CREATE TABLE admins (
 -- csrf_token: enviado en header X-CSRF-Token en mutaciones
 -- Sesión dura SESSION_DURATION_HOURS (8h por defecto)
 -- ============================================================
-CREATE TABLE admin_sessions (
+CREATE TABLE IF NOT EXISTS admin_sessions (
   id          TEXT PRIMARY KEY,
   admin_id    TEXT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
   token_hash  TEXT NOT NULL UNIQUE,
@@ -175,7 +175,7 @@ CREATE TABLE admin_sessions (
 -- Registra todas las acciones del admin.
 -- old_value y new_value son JSON strings.
 -- ============================================================
-CREATE TABLE audit_log (
+CREATE TABLE IF NOT EXISTS audit_log (
   id          TEXT PRIMARY KEY,
   admin_id    TEXT NOT NULL,
   action      TEXT NOT NULL,      -- ej: 'product.status' | 'order.confirm' | 'settings.update'
@@ -196,7 +196,7 @@ CREATE TABLE audit_log (
 --   order_expiry_minutes → minutos hasta expiración pedido (default: 120)
 --   catalog_version      → entero, se incrementa en cada rebuild del catálogo
 -- ============================================================
-CREATE TABLE settings (
+CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
@@ -206,31 +206,31 @@ CREATE TABLE settings (
 -- ============================================================
 
 -- Catálogo público: filtro principal
-CREATE INDEX idx_products_status    ON products(status);
-CREATE INDEX idx_products_model     ON products(model_id);
-CREATE INDEX idx_products_size      ON products(size) WHERE type = 'sneaker';
-CREATE INDEX idx_products_condition ON products(physical_condition);
-CREATE INDEX idx_products_sort      ON products(sort_order, created_at);
+CREATE INDEX IF NOT EXISTS idx_products_status    ON products(status);
+CREATE INDEX IF NOT EXISTS idx_products_model     ON products(model_id);
+CREATE INDEX IF NOT EXISTS idx_products_size      ON products(size) WHERE type = 'sneaker';
+CREATE INDEX IF NOT EXISTS idx_products_condition ON products(physical_condition);
+CREATE INDEX IF NOT EXISTS idx_products_sort      ON products(sort_order, created_at);
 
 -- Para el cron de expiración: saber qué reservas liberar
-CREATE INDEX idx_products_reserved  ON products(reserved_until) WHERE status = 'reserved';
+CREATE INDEX IF NOT EXISTS idx_products_reserved  ON products(reserved_until) WHERE status = 'reserved';
 
 -- Pedidos
-CREATE INDEX idx_orders_status      ON orders(status, created_at);
-CREATE INDEX idx_orders_expiry      ON orders(expires_at, status);
+CREATE INDEX IF NOT EXISTS idx_orders_status      ON orders(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_expiry      ON orders(expires_at, status);
 
 -- Items de pedido (para saber qué pedidos tienen un producto)
-CREATE INDEX idx_order_items_prod   ON order_items(product_id);
-CREATE INDEX idx_order_items_order  ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_prod   ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order  ON order_items(order_id);
 
 -- Sesiones de admin
-CREATE INDEX idx_sessions_token     ON admin_sessions(token_hash);
-CREATE INDEX idx_sessions_expiry    ON admin_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_token     ON admin_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry    ON admin_sessions(expires_at);
 
 -- Modelos por marca
-CREATE INDEX idx_models_brand       ON models(brand_id);
+CREATE INDEX IF NOT EXISTS idx_models_brand       ON models(brand_id);
 
 -- Auditoría
-CREATE INDEX idx_audit_entity       ON audit_log(entity_type, entity_id);
-CREATE INDEX idx_audit_date         ON audit_log(created_at);
-CREATE INDEX idx_audit_admin        ON audit_log(admin_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_entity       ON audit_log(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_audit_date         ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_admin        ON audit_log(admin_id, created_at);

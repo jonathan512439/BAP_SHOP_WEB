@@ -18,6 +18,16 @@ const conditionLabel = computed(() => {
 
 const isSold = computed(() => props.product.status === PRODUCT_STATUS.SOLD)
 const inCart = computed(() => cartStore.isInCart(props.product.id))
+const imageVariants = computed(() => props.product.primary_image_variants ?? null)
+const cardImageUrl = computed(() => imageVariants.value?.card_url || props.product.primary_image_url)
+const thumbImageUrl = computed(() => imageVariants.value?.thumb_url || props.product.primary_image_url)
+const imageSrcset = computed(() => {
+  if (!thumbImageUrl.value || !cardImageUrl.value || thumbImageUrl.value === cardImageUrl.value) {
+    return undefined
+  }
+
+  return `${thumbImageUrl.value} 320w, ${cardImageUrl.value} 640w`
+})
 const cartButtonLabel = computed(() => {
   if (isSold.value) return 'Agotado'
   return inCart.value ? 'En carrito' : 'Agregar'
@@ -51,11 +61,14 @@ const onCardKeydown = (event: KeyboardEvent) => {
   >
     <button class="image-wrapper image-button" :aria-label="`Ver imagenes y detalle de ${product.name}`" @click="openDetail" type="button">
       <img
-        v-if="product.primary_image_url"
-        :src="product.primary_image_url"
+        v-if="cardImageUrl"
+        :src="cardImageUrl"
+        :srcset="imageSrcset"
+        sizes="(max-width: 640px) 50vw, 320px"
         :alt="product.name"
         class="product-image"
         loading="lazy"
+        decoding="async"
       />
       <div v-else class="no-image">Sin imagen</div>
 
