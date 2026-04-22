@@ -45,5 +45,8 @@ jobs:
       - name: Test Worker
         run: pnpm test:worker
 
+      - name: Verify Cloudflare authentication
+        run: pnpm --filter worker exec wrangler whoami
+
       - name: Deploy Worker to production
         run: pnpm --filter worker exec wrangler deploy --env production

@@ -57,7 +57,25 @@ Ruta:
 4. `Actions`.
 5. `New repository secret`.
 
-El token de Cloudflare debe tener permisos minimos para desplegar Workers y leer los recursos usados por Wrangler.
+El token de Cloudflare debe ser un API Token de usuario, no una Global API Key ni el ID del token.
+
+Permisos recomendados para este proyecto:
+
+- `User` > `User Details` > `Read`
+- `User` > `Memberships` > `Read`
+- `Account` > `Account Settings` > `Read`
+- `Account` > `Workers Scripts` > `Edit`
+- `Account` > `Workers KV Storage` > `Edit`
+- `Account` > `Workers R2 Storage` > `Edit`
+- `Account` > `D1` > `Edit`
+- `Zone` > `Workers Routes` > `Edit`
+
+Recursos:
+
+- Account Resources: incluir la cuenta donde vive `bab-shop.com`.
+- Zone Resources: incluir `bab-shop.com`.
+
+Si GitHub Actions muestra `Authentication failed (code: 9106)` en `/memberships`, el token esta mal copiado, vencido, pertenece a otra cuenta o no tiene `User > Memberships > Read`.
 
 ## Proteccion recomendada de `main`
 
