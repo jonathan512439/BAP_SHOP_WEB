@@ -44,7 +44,9 @@ const isUpdating = ref<string | null>(null)
 const productPendingAction = ref<ProductPendingAction | null>(null)
 const feedbackModal = ref<FeedbackModalState | null>(null)
 const meta = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
-const publicAssetsBase = import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
+const publicAssetsBase = (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
+  .trim()
+  .replace(/\/+$/, '')
 
 const filters = ref({
   status: '',

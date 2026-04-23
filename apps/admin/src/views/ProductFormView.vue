@@ -70,7 +70,9 @@ const router = useRouter()
 const isEdit = route.name === 'product-edit'
 const productId = String(route.params.id ?? '')
 const publicAssetsBase =
-  import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
+  (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
+    .trim()
+    .replace(/\/+$/, '')
 
 const isLoading = ref(false)
 const isSaving = ref(false)

@@ -11,7 +11,9 @@ const route = useRoute()
 const router = useRouter()
 const cartStore = useCartStore()
 
-const ASSETS_DOMAIN = import.meta.env.VITE_ASSETS_URL || 'https://assets.bapshop.com/public'
+const ASSETS_DOMAIN = (import.meta.env.VITE_ASSETS_URL || 'https://assets.bapshop.com/public')
+  .trim()
+  .replace(/\/+$/, '')
 
 const isLoading = ref(true)
 const error = ref<string | null>(null)

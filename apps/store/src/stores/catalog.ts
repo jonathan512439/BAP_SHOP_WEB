@@ -3,7 +3,9 @@ import { ref, computed } from 'vue'
 import { PRODUCT_TYPE, type CatalogCard, type CatalogFilters, type CatalogManifest, type ProductType } from '@bap-shop/shared'
 
 const ASSETS_DOMAIN =
-  import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
+  (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
+    .trim()
+    .replace(/\/+$/, '')
 
 export const useCatalogStore = defineStore('catalog', () => {
   const isLoaded = ref(false)

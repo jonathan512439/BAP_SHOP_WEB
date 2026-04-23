@@ -146,7 +146,9 @@ const formatDate = (iso?: string | null) => {
   return new Date(iso).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-const assetsBase = import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public'
+const assetsBase = (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
+  .trim()
+  .replace(/\/+$/, '')
 const buildImageUrl = (r2Key?: string | null) => (r2Key ? `${assetsBase}/${r2Key.replace(/^public\//, '')}` : null)
 
 const fetchData = async () => {
