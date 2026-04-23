@@ -17,11 +17,11 @@ export const authRouter = new Hono<HonoEnv>()
 // ============================================================
 
 /** Opciones comunes de cookie según el entorno */
-function cookieOptions(isProd: boolean, maxAge: number, httpOnly: boolean) {
+function cookieOptions(isPublicEnv: boolean, maxAge: number, httpOnly: boolean) {
   return {
     path: '/' as const,
-    sameSite: (isProd ? 'Lax' : 'Strict') as 'Lax' | 'Strict',
-    secure: isProd,
+    sameSite: (isPublicEnv ? 'Lax' : 'Strict') as 'Lax' | 'Strict',
+    secure: isPublicEnv,
     httpOnly,
     maxAge,
   }
@@ -30,20 +30,20 @@ function cookieOptions(isProd: boolean, maxAge: number, httpOnly: boolean) {
 /** Setea las cookies de sesión y CSRF */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setSessionCookies(c: Context<HonoEnv, any>, token: string, csrfToken: string) {
-  const isProd = c.env.ENVIRONMENT === 'production'
+  const isPublicEnv = c.env.ENVIRONMENT !== 'development'
   const maxAge = SESSION_DURATION_HOURS * 3600
 
-  setCookie(c, 'bap_session', encodeURIComponent(token), cookieOptions(isProd, maxAge, true))
-  setCookie(c, 'bap_csrf', csrfToken, cookieOptions(isProd, maxAge, false))
+  setCookie(c, 'bap_session', encodeURIComponent(token), cookieOptions(isPublicEnv, maxAge, true))
+  setCookie(c, 'bap_csrf', csrfToken, cookieOptions(isPublicEnv, maxAge, false))
 }
 
 /** Limpia las cookies de sesión y CSRF */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function clearSessionCookies(c: Context<HonoEnv, any>) {
-  const isProd = c.env.ENVIRONMENT === 'production'
+  const isPublicEnv = c.env.ENVIRONMENT !== 'development'
 
-  deleteCookie(c, 'bap_session', { path: '/', secure: isProd, sameSite: isProd ? 'Lax' : 'Strict' })
-  deleteCookie(c, 'bap_csrf', { path: '/', secure: isProd, sameSite: isProd ? 'Lax' : 'Strict' })
+  deleteCookie(c, 'bap_session', { path: '/', secure: isPublicEnv, sameSite: isPublicEnv ? 'Lax' : 'Strict' })
+  deleteCookie(c, 'bap_csrf', { path: '/', secure: isPublicEnv, sameSite: isPublicEnv ? 'Lax' : 'Strict' })
 }
 
 // ============================================================

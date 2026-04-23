@@ -14,7 +14,7 @@ export interface Env {
   KV: KVNamespace
 
   // Variables de entorno
-  ENVIRONMENT: 'development' | 'production'
+  ENVIRONMENT: 'development' | 'staging' | 'production'
   R2_PUBLIC_DOMAIN: string    // ej: "assets.bapshop.com"
   STORE_DOMAIN: string        // ej: "bapshop.com"
   ADMIN_DOMAIN: string        // ej: "admin.bapshop.com"

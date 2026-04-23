@@ -43,7 +43,7 @@ onMounted(() => {
           errorMsg.value = ''
         },
         'error-callback': () => {
-          errorMsg.value = 'No se pudo validar la seguridad. Revisa que el widget de Turnstile permita admin.bab-shop.com y recarga la pagina.'
+          errorMsg.value = 'No se pudo validar la seguridad. Revisa que el widget de Turnstile permita este dominio y recarga la pagina.'
         },
       })
     }

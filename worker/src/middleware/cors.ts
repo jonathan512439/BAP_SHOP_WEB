@@ -11,16 +11,16 @@ const ALLOWED_ORIGINS_DEV = ['http://localhost:5173', 'http://localhost:5174', '
 export const corsMiddleware = (): MiddlewareHandler<HonoEnv> => {
   return async (c, next) => {
     const origin = c.req.header('Origin') ?? ''
-    const isProd = c.env.ENVIRONMENT === 'production'
-    const productionOrigins = [`https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
+    const isDevelopment = c.env.ENVIRONMENT === 'development'
+    const publicOrigins = [`https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
 
-    if (isProd && !c.env.STORE_DOMAIN.startsWith('www.')) {
-      productionOrigins.push(`https://www.${c.env.STORE_DOMAIN}`)
+    if (!c.env.STORE_DOMAIN.startsWith('www.')) {
+      publicOrigins.push(`https://www.${c.env.STORE_DOMAIN}`)
     }
 
-    const allowedOrigins = isProd
-      ? productionOrigins
-      : [...ALLOWED_ORIGINS_DEV, ...productionOrigins]
+    const allowedOrigins = isDevelopment
+      ? [...ALLOWED_ORIGINS_DEV, ...publicOrigins]
+      : publicOrigins
 
     const isAllowed = allowedOrigins.includes(origin)
 

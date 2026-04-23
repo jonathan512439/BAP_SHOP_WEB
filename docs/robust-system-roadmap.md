@@ -341,9 +341,10 @@ Evitar que codigo roto llegue a produccion.
 
 Estado actual:
 
-- Implementada en codigo.
-- Pendiente activar proteccion de rama `main` en GitHub.
-- Pendiente configurar secretos de GitHub para despliegue manual del Worker.
+- Completada.
+- Implementada en codigo y validada en GitHub Actions.
+- Proteccion de rama `main` configurada con validacion obligatoria.
+- Secretos de GitHub configurados para despliegue manual del Worker.
 - Procedimiento documentado en `docs/deployment/ci-cd.md`.
 - Workflow `CI` valida typecheck, tests y builds de store, admin y worker.
 - Workflow `Deploy Worker` permite despliegue manual validado hacia produccion.
@@ -387,6 +388,17 @@ Prioridad: muy recomendable; necesaria para cambios grandes.
 Objetivo:
 
 Probar cambios importantes fuera de produccion.
+
+Estado actual:
+
+- Completada.
+- Recursos reales de Cloudflare staging creados y validados.
+- `env.staging` configurado en `worker/wrangler.jsonc` con D1, R2 y KV propios.
+- Procedimiento documentado en `docs/deployment/staging.md`.
+- CORS y cookies ya diferencian `development`, `staging` y `production`.
+- CSP de store/admin ya permite `https://api-staging.bab-shop.com`.
+- `api-staging.bab-shop.com`, `staging.bab-shop.com` y `admin-staging.bab-shop.com` funcionan.
+- Staging no usa cron triggers automaticos por limite del plan Free; se valida manualmente o mediante acciones admin.
 
 Tareas de codigo:
 
@@ -577,8 +589,8 @@ Reevaluar Cloudflare Images si:
 - [x] Fase 2: seguridad de Pages y dominios.
 - [x] Fase 3: WAF y rate limiting.
 - [x] Fase 4: observabilidad y logs.
-- [ ] Fase 5: CI/CD. Implementada en codigo; pendiente configurar GitHub branch protection y secrets.
-- [ ] Fase 6: staging.
+- [x] Fase 5: CI/CD.
+- [x] Fase 6: staging.
 - [ ] Fase 7: auditoria y consistencia backend.
 - [ ] Fase 8: reparadores operativos.
 - [ ] Fase 9: UX de fallos y conectividad.

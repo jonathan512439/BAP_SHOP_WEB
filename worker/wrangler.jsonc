@@ -1,68 +1,104 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "bap-shop-worker",
-  "main": "src/index.ts",
-  "compatibility_date": "2024-12-30",
-  "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "bap-shop-db",
-      "database_id": "055838e4-ec0c-4bca-92b8-9fd3c259b78b"
-    }
-  ],
-  "r2_buckets": [
-    {
-      "binding": "R2",
-      "bucket_name": "bap-shop-images"
-    }
-  ],
-  "kv_namespaces": [
-    {
-      "binding": "KV",
-      "id": "1a697ad608d9445aafbcb89dbda3a94e"
-    }
-  ],
-  "vars": {
-    "ENVIRONMENT": "development",
-    "STORE_DOMAIN": "localhost:5173",
-    "ADMIN_DOMAIN": "localhost:5174",
-    "R2_PUBLIC_DOMAIN": "pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
-  },
-  "triggers": {
-    "crons": [
-      "*/5 * * * *",
-      "0 3 * * *",
-      "0 4 * * SUN"
-    ]
-  },
-  "env": {
-    "production": {
-      "vars": {
-        "ENVIRONMENT": "production",
-        "STORE_DOMAIN": "bab-shop.com",
-        "ADMIN_DOMAIN": "admin.bab-shop.com",
-        "R2_PUBLIC_DOMAIN": "api.bab-shop.com"
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "bap-shop-db",
-          "database_id": "055838e4-ec0c-4bca-92b8-9fd3c259b78b"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "R2",
-          "bucket_name": "bap-shop-images"
-        }
-      ],
-      "kv_namespaces": [
-        {
-          "binding": "KV",
-          "id": "1a697ad608d9445aafbcb89dbda3a94e"
-        }
-      ]
-    }
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "bap-shop-worker",
+	"main": "src/index.ts",
+	"compatibility_date": "2024-12-30",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "bap-shop-db",
+			"database_id": "055838e4-ec0c-4bca-92b8-9fd3c259b78b"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "R2",
+			"bucket_name": "bap-shop-images"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "KV",
+			"id": "1a697ad608d9445aafbcb89dbda3a94e"
+		}
+	],
+	"vars": {
+		"ENVIRONMENT": "development",
+		"STORE_DOMAIN": "localhost:5173",
+		"ADMIN_DOMAIN": "localhost:5174",
+		"R2_PUBLIC_DOMAIN": "pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
+	},
+	"triggers": {
+		"crons": []
+	},
+	"env": {
+		"production": {
+			"triggers": {
+				"crons": [
+					"*/5 * * * *",
+					"0 3 * * *",
+					"0 4 * * SUN"
+				]
+			},
+			"vars": {
+				"ENVIRONMENT": "production",
+				"STORE_DOMAIN": "bab-shop.com",
+				"ADMIN_DOMAIN": "admin.bab-shop.com",
+				"R2_PUBLIC_DOMAIN": "api.bab-shop.com"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "bap-shop-db",
+					"database_id": "055838e4-ec0c-4bca-92b8-9fd3c259b78b"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "R2",
+					"bucket_name": "bap-shop-images"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "KV",
+					"id": "1a697ad608d9445aafbcb89dbda3a94e"
+				}
+			]
+		},
+		"staging": {
+			"name": "bap-shop-worker-staging",
+			"triggers": {
+				"crons": []
+			},
+			"vars": {
+				"ENVIRONMENT": "staging",
+				"STORE_DOMAIN": "staging.bab-shop.com",
+				"ADMIN_DOMAIN": "admin-staging.bab-shop.com",
+				"R2_PUBLIC_DOMAIN": "api-staging.bab-shop.com"
+			},
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "bap-shop-db-staging",
+					"database_id": "c7c1dfdc-e0e5-46ec-9061-2a707a53fb3a"
+				}
+			],
+			"r2_buckets": [
+				{
+					"binding": "R2",
+					"bucket_name": "bap-shop-images-staging"
+				}
+			],
+			"kv_namespaces": [
+				{
+					"binding": "KV",
+					"id": "30b4bf7aadda44eda99c9903bb4f74e4"
+				}
+			]
+		}
+	}
 }

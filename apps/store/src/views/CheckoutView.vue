@@ -87,7 +87,7 @@ function mountTurnstile() {
       errors.value.submit = ''
     },
     'error-callback': () => {
-      errors.value.submit = 'No se pudo validar la seguridad. Revisa que Turnstile permita bab-shop.com y recarga la pagina.'
+      errors.value.submit = 'No se pudo validar la seguridad. Revisa que Turnstile permita este dominio y recarga la pagina.'
     },
     'expired-callback': () => {
       turnstileToken.value = ''
