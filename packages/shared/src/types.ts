@@ -149,6 +149,7 @@ export interface CatalogCard {
   price: number
   promo_price: number | null
   discount_pct: number | null
+  promo_ends_at?: string | null
   physical_condition: PhysicalCondition
   primary_image_url: string | null
   primary_image_variants?: CatalogImageVariants | null
@@ -176,6 +177,7 @@ export interface CatalogProductDetail {
   price: number
   promo_price: number | null
   discount_pct: number | null
+  promo_ends_at?: string | null
   physical_condition: PhysicalCondition
   images: Array<{
     r2_key: string

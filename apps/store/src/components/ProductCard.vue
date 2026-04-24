@@ -36,6 +36,17 @@ const cartButtonLabel = computed(() => {
   return inCart.value ? 'En carrito' : 'Agregar'
 })
 
+const promoEndsLabel = computed(() => {
+  if (!props.product.promo_ends_at || !props.product.discount_pct) return ''
+  const date = new Date(props.product.promo_ends_at)
+  if (Number.isNaN(date.getTime())) return ''
+
+  return date.toLocaleString('es-CL', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+})
+
 const addToCart = () => {
   if (isUnavailable.value) return
   cartStore.addItem(props.product)
@@ -81,7 +92,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
       </div>
       
       <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isUnavailable }">
-        -{{ product.discount_pct }}%
+        {{ product.discount_pct }}% DESCUENTO
       </div>
       <div v-if="isUnavailable" class="badge unavailable" :class="{ reserved: isReserved }">
         {{ isReserved ? 'Reservado' : 'Vendido' }}
@@ -101,7 +112,8 @@ const onCardKeydown = (event: KeyboardEvent) => {
         <h3 class="name">{{ product.name }}</h3>
       </button>
 
-      <p class="product-id">{{ product.id }}</p>
+      <p v-if="promoEndsLabel" class="product-promo-window">Hasta {{ promoEndsLabel }}</p>
+      <p v-else class="product-id">{{ product.id }}</p>
       
       <div class="price-row">
         <div class="prices">
@@ -248,6 +260,9 @@ const onCardKeydown = (event: KeyboardEvent) => {
   left: 0.75rem;
   background: var(--accent-primary);
   color: var(--bg-main);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .badge.discount.stacked {
@@ -313,6 +328,13 @@ const onCardKeydown = (event: KeyboardEvent) => {
   color: var(--text-tertiary);
 }
 
+.product-promo-window {
+  margin: -0.35rem 0 1rem;
+  font-size: 0.75rem;
+  color: #fde68a;
+  font-weight: 600;
+}
+
 .price-row {
   display: flex;
   justify-content: space-between;
@@ -339,6 +361,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
 
 .final-price.is-promo {
   color: var(--accent-primary);
+  text-shadow: 0 0 16px rgba(34, 211, 238, 0.42);
 }
 
 .btn-cart {

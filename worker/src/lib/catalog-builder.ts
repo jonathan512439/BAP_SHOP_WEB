@@ -147,6 +147,7 @@ export async function rebuildCatalogSnapshots(
       price: p.price,
       promo_price: promoPrice,
       discount_pct: promoActive ? p.discount_pct : null,
+      promo_ends_at: promoActive ? p.promo_ends : null,
       physical_condition: p.physical_condition as CatalogCard['physical_condition'],
       primary_image_url: primaryImg ? getImageUrl(primaryImg.r2_key) : null,
       primary_image_variants: primaryImg ? getImageVariantUrls(primaryImg) : null,
@@ -202,6 +203,7 @@ export async function rebuildCatalogSnapshots(
       price: p.price,
       promo_price: promoPrice,
       discount_pct: promoActive ? p.discount_pct : null,
+      promo_ends_at: promoActive ? p.promo_ends : null,
       physical_condition: p.physical_condition as CatalogProductDetail['physical_condition'],
       images: imgs.map((img) => ({
         r2_key: img.r2_key,

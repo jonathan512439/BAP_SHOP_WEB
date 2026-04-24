@@ -273,10 +273,6 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
           </div>
         </div>
 
-        <div class="feedback-card neutral" role="note">
-          Tu solicitud se enviara por WhatsApp con el resumen del pedido. La tienda te confirmara disponibilidad, forma
-          de pago, entrega o retiro antes de cerrar la venta.
-        </div>
       </section>
 
       <section class="form-container">
@@ -300,7 +296,7 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
             v-model="form.customerPhone"
             type="tel"
             label="Telefono o WhatsApp"
-            placeholder="+591 71234567"
+            placeholder="71234567"
             :error="errors.customerPhone"
             :disabled="orderSubmitting"
           />
@@ -317,6 +313,11 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
           <p v-if="!isOnline" class="offline-note" role="status">
             Recupera la conexion para poder enviar la solicitud por WhatsApp.
           </p>
+
+          <div class="feedback-card neutral" role="note">
+            Tu solicitud se enviara por WhatsApp con el resumen del pedido. La tienda te confirmara disponibilidad, forma
+            de pago, entrega o retiro antes de cerrar la venta.
+          </div>
         </form>
       </section>
     </div>
@@ -546,6 +547,19 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
   display: flex;
   flex-direction: column;
   gap: 1.2rem;
+}
+
+.checkout-form :deep(.input-group input) {
+  background: rgba(8, 14, 24, 0.92);
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.28);
+}
+
+.checkout-form :deep(.input-group input:focus) {
+  border-color: rgba(34, 211, 238, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(34, 211, 238, 0.22),
+    0 14px 22px rgba(2, 6, 23, 0.34);
 }
 
 .turnstile-box {

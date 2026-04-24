@@ -17,6 +17,7 @@ interface OrderListRow {
   status: string
   total: number
   item_count: number
+  preview_image_r2_key?: string | null
   created_at: string
   expires_at: string
 }
@@ -66,6 +67,11 @@ const formatDate = (iso?: string | null) => {
     timeStyle: 'short',
   })
 }
+
+const assetsBase = (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
+  .trim()
+  .replace(/\/+$/, '')
+const buildImageUrl = (r2Key?: string | null) => (r2Key ? `${assetsBase}/${r2Key.replace(/^public\//, '')}` : null)
 
 const selectedStatus = computed(() => selectedOrder.value?.status ?? '')
 
@@ -251,23 +257,34 @@ onMounted(() => {
     <div v-if="isLoading" class="loading">Cargando pedidos...</div>
 
     <div v-else class="admin-card">
-      <BaseTable :empty="orders.length === 0" empty-message="No hay pedidos registrados." :colspan="7">
+      <BaseTable :empty="orders.length === 0" empty-message="No hay pedidos registrados." :colspan="6">
         <template #head>
           <thead>
             <tr>
-              <th>Codigo</th>
+              <th>Foto</th>
               <th>Cliente</th>
               <th>Fecha</th>
               <th>Estado</th>
               <th>Total</th>
-              <th>Items</th>
               <th>Detalle</th>
             </tr>
           </thead>
         </template>
 
         <tr v-for="order in orders" :key="order.id">
-          <td class="order-code">#{{ order.order_code }}</td>
+          <td>
+            <div class="order-preview">
+              <img
+                v-if="buildImageUrl(order.preview_image_r2_key)"
+                :src="buildImageUrl(order.preview_image_r2_key)!"
+                :alt="`Producto principal del pedido ${order.order_code}`"
+                class="order-preview-image"
+                loading="lazy"
+                decoding="async"
+              />
+              <div v-else class="order-preview-fallback">Sin imagen</div>
+            </div>
+          </td>
           <td>
             <div class="customer-name">{{ order.customer_name }}</div>
             <div class="customer-phone">{{ order.customer_phone }}</div>
@@ -275,7 +292,6 @@ onMounted(() => {
           <td class="text-sm text-secondary">{{ formatDate(order.created_at) }}</td>
           <td><StatusBadge :status="order.status" kind="order" /></td>
           <td class="order-total">{{ formatPrice(order.total) }}</td>
-          <td class="text-sm text-secondary">{{ order.item_count }}</td>
           <td>
             <button type="button" class="btn btn-secondary btn-sm" @click="openOrder(order.id)">Ver detalle</button>
           </td>
@@ -456,10 +472,30 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
-.order-code {
-  font-family: monospace;
-  font-weight: 600;
-  color: var(--text-primary);
+.order-preview {
+  width: 66px;
+  height: 66px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+}
+
+.order-preview-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.order-preview-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  font-size: 0.66rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
 }
 
 .customer-name {

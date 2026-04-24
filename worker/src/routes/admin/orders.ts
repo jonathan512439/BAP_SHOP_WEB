@@ -51,7 +51,15 @@ adminOrdersRouter.get('/', async (c) => {
       `SELECT o.id, o.order_code, o.customer_name, o.customer_phone,
               o.status, o.subtotal, o.discount, o.total,
               o.created_at, o.expires_at,
-              COUNT(oi.id) AS item_count
+              COUNT(oi.id) AS item_count,
+              (
+                SELECT COALESCE(pi.card_r2_key, pi.r2_key)
+                FROM order_items oi_first
+                LEFT JOIN product_images pi ON pi.product_id = oi_first.product_id
+                WHERE oi_first.order_id = o.id
+                ORDER BY oi_first.id ASC, pi.is_primary DESC, pi.sort_order ASC
+                LIMIT 1
+              ) AS preview_image_r2_key
        FROM orders o
        LEFT JOIN order_items oi ON oi.order_id = o.id
        ${where}

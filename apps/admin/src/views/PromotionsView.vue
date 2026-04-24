@@ -8,6 +8,7 @@ import FormField from '../components/FormField.vue'
 import FormSelect from '../components/FormSelect.vue'
 import FormToggle from '../components/FormToggle.vue'
 import BaseTable from '../components/BaseTable.vue'
+import BasePagination from '../components/BasePagination.vue'
 
 interface ProductRow {
   id: string
@@ -44,6 +45,8 @@ const filters = ref({
   search: '',
   status: '',
 })
+const currentPage = ref(1)
+const PAGE_SIZE = 10
 
 const form = ref({
   discountPct: 15,
@@ -90,6 +93,13 @@ const rows = computed<PromotionTableRow[]>(() => {
 
       return true
     })
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(rows.value.length / PAGE_SIZE)))
+
+const paginatedRows = computed(() => {
+  const start = (currentPage.value - 1) * PAGE_SIZE
+  return rows.value.slice(start, start + PAGE_SIZE)
 })
 
 const editingRow = computed<PromotionTableRow | null>(() => {
@@ -264,6 +274,10 @@ const closeActionErrorModal = () => {
   actionErrorMessage.value = ''
 }
 
+const goToPage = (page: number) => {
+  currentPage.value = Math.min(Math.max(1, page), totalPages.value)
+}
+
 onMounted(() => {
   fetchData()
 })
@@ -285,6 +299,19 @@ watch(
     form.value.durationPreset = getDurationPresetForRange(form.value.startsAt, value)
   }
 )
+
+watch(
+  () => [filters.value.search, filters.value.status],
+  () => {
+    currentPage.value = 1
+  }
+)
+
+watch(rows, () => {
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
+})
 </script>
 
 <template>
@@ -342,7 +369,7 @@ watch(
         </thead>
       </template>
 
-      <tr v-for="row in rows" :key="row.id">
+      <tr v-for="row in paginatedRows" :key="row.id">
         <td class="product-cell">
           <img v-if="buildImageUrl(row.primary_image)" :src="buildImageUrl(row.primary_image)!" alt="" class="thumb" />
           <div>
@@ -389,6 +416,16 @@ watch(
         </td>
       </tr>
     </BaseTable>
+
+    <BasePagination
+      v-if="rows.length > 0 && totalPages > 1"
+      class="mt-4"
+      :page="currentPage"
+      :total-pages="totalPages"
+      @previous="goToPage(currentPage - 1)"
+      @next="goToPage(currentPage + 1)"
+      @go-to-page="goToPage"
+    />
 
     <div v-if="editingProductId" class="modal-backdrop" @click.self="closeEditor">
       <div class="modal admin-card">
@@ -564,6 +601,10 @@ watch(
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.mt-4 {
+  margin-top: 1.5rem;
 }
 
 .btn-sm {

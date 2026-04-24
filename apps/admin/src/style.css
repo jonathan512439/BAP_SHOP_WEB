@@ -3,11 +3,11 @@
    ========================================================================== */
 
 :root {
-  /* Colors - Technical Slate */
-  --bg-main: #0b1220;
-  --bg-secondary: #121c30;
-  --bg-tertiary: #1a2740;
-  --bg-hover: #22324f;
+  /* Colors - Technical Graphite */
+  --bg-main: #03060d;
+  --bg-secondary: #0a111e;
+  --bg-tertiary: #131d30;
+  --bg-hover: #1b2942;
 
   --text-primary: #f8fafc;
   --text-secondary: #cbd5e1;
@@ -51,8 +51,8 @@ html {
 
 body {
   background:
-    radial-gradient(circle at 10% 4%, rgba(56, 189, 248, 0.1), transparent 28%),
-    radial-gradient(circle at 88% 0%, rgba(99, 102, 241, 0.08), transparent 26%),
+    radial-gradient(circle at 10% 4%, rgba(56, 189, 248, 0.08), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(99, 102, 241, 0.06), transparent 26%),
     var(--bg-main);
 }
 
