@@ -201,7 +201,7 @@ ordersRouter.post(
 
       const whatsappUrl = buildWhatsappUrl(settings.whatsapp_number, message)
 
-      await refreshCatalogAfterInventoryMutation(c, {
+      queueCatalogRefreshAfterInventoryMutation(c, {
         event: 'orders_reserved',
         orderId: orderResult.orderId,
       })
@@ -346,4 +346,16 @@ async function refreshCatalogAfterInventoryMutation(
       })
     }
   }
+}
+
+function queueCatalogRefreshAfterInventoryMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; orderId?: string }
+) {
+  const task = refreshCatalogAfterInventoryMutation(c, context)
+  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+    c.executionCtx.waitUntil(task)
+    return
+  }
+  void task
 }

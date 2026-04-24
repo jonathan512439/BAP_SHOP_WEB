@@ -12,11 +12,14 @@ export const corsMiddleware = (): MiddlewareHandler<HonoEnv> => {
   return async (c, next) => {
     const origin = c.req.header('Origin') ?? ''
     const isDevelopment = c.env.ENVIRONMENT === 'development'
-    const publicOrigins = [`https://${c.env.STORE_DOMAIN}`, `https://${c.env.ADMIN_DOMAIN}`]
-
-    if (!c.env.STORE_DOMAIN.startsWith('www.')) {
-      publicOrigins.push(`https://www.${c.env.STORE_DOMAIN}`)
-    }
+    const publicHosts = [c.env.STORE_DOMAIN, c.env.ADMIN_DOMAIN]
+    const publicOrigins = Array.from(
+      new Set(
+        publicHosts.flatMap((host) =>
+          host.startsWith('www.') ? [`https://${host}`] : [`https://${host}`, `https://www.${host}`]
+        )
+      )
+    )
 
     const allowedOrigins = isDevelopment
       ? [...ALLOWED_ORIGINS_DEV, ...publicOrigins]
@@ -32,7 +35,7 @@ export const corsMiddleware = (): MiddlewareHandler<HonoEnv> => {
         headers: {
           'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type,X-CSRF-Token',
+          'Access-Control-Allow-Headers': 'Content-Type,X-CSRF-Token,Idempotency-Key',
           'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
         },

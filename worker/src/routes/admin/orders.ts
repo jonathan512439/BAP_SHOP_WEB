@@ -166,7 +166,7 @@ adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMuta
   await c.env.DB.batch(statements)
   await logAction(c.env.DB, c.get('adminId'), `order.${status}`, 'order', id, { status: order.status }, { status })
 
-  await refreshCatalogAfterInventoryMutation(c, {
+  queueCatalogRefreshAfterInventoryMutation(c, {
     event: status === 'confirmed' ? 'orders_confirmed' : 'orders_cancelled',
     orderId: id,
   })
@@ -232,4 +232,16 @@ async function refreshCatalogAfterInventoryMutation(
       })
     }
   }
+}
+
+function queueCatalogRefreshAfterInventoryMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; orderId: string }
+) {
+  const task = refreshCatalogAfterInventoryMutation(c, context)
+  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+    c.executionCtx.waitUntil(task)
+    return
+  }
+  void task
 }

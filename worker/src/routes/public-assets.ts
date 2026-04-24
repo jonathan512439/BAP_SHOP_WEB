@@ -4,6 +4,16 @@ import type { HonoEnv } from '../types/env'
 
 export const publicAssetsRouter = new Hono<HonoEnv>()
 
+function buildCacheControlForAsset(assetPath: string): string {
+  if (assetPath.endsWith('.json')) {
+    // Manifest y snapshots deben refrescarse rápido para reflejar
+    // reservas/ventas sin esperar demasiado cache del navegador/CDN.
+    return 'public, max-age=10, must-revalidate'
+  }
+
+  return 'public, max-age=31536000, immutable'
+}
+
 function applyPublicAssetHeaders(headers: Headers): void {
   // Los snapshots e imagenes bajo /public no contienen datos sensibles.
   // Se consumen desde Store/Admin y deben poder leerse como assets cross-origin.
@@ -38,12 +48,7 @@ async function fetchFromFallback(c: Context<HonoEnv>, assetPath: string) {
   applyPublicAssetHeaders(headers)
   headers.set('x-asset-source', 'fallback')
 
-  if (!headers.has('Cache-Control')) {
-    headers.set(
-      'Cache-Control',
-      assetPath.endsWith('.json') ? 'public, max-age=60' : 'public, max-age=31536000, immutable'
-    )
-  }
+  headers.set('Cache-Control', buildCacheControlForAsset(assetPath))
 
   return new Response(upstream.body, {
     status: 200,
@@ -95,9 +100,7 @@ publicAssetsRouter.get('/*', async (c) => {
   headers.set('ETag', object.httpEtag)
   applyPublicAssetHeaders(headers)
 
-  if (!headers.has('Cache-Control')) {
-    headers.set('Cache-Control', key.endsWith('.json') ? 'public, max-age=60' : 'public, max-age=31536000, immutable')
-  }
+  headers.set('Cache-Control', buildCacheControlForAsset(assetPath))
 
   return new Response(object.body, {
     status: 200,
