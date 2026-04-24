@@ -37,11 +37,11 @@ const recentAudit = ref<DashboardAudit[]>([])
 
 const cards = computed(() => [
   {
-    title: 'Pedidos pendientes',
-    value: summary.value.pendingOrders,
-    tone: 'text-accent',
-    actionLabel: 'Ver pedidos',
-    action: () => router.push('/orders'),
+    title: 'Catalogo activo',
+    value: summary.value.activeProducts,
+    tone: 'text-success',
+    actionLabel: 'Ir a productos',
+    action: () => router.push('/products'),
   },
   {
     title: 'Articulos reservados',
@@ -51,11 +51,11 @@ const cards = computed(() => [
     action: () => router.push('/products'),
   },
   {
-    title: 'Catalogo activo',
-    value: summary.value.activeProducts,
-    tone: 'text-success',
-    actionLabel: 'Ir a productos',
-    action: () => router.push('/products'),
+    title: 'Pedidos pendientes',
+    value: summary.value.pendingOrders,
+    tone: 'text-accent',
+    actionLabel: 'Ver pedidos',
+    action: () => router.push('/orders'),
   },
   {
     title: 'Pedidos confirmados',
@@ -251,8 +251,8 @@ onMounted(async () => {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
 }
 
 .dashboard-grid {
@@ -271,7 +271,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  min-height: 172px;
+  min-height: 156px;
 }
 
 .stat-card h3 {

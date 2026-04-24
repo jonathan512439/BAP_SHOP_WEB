@@ -123,6 +123,7 @@ watch(
           <RouterLink to="/zapatillas" :class="{ active: route.name === 'sneakers' }">Zapatillas</RouterLink>
           <RouterLink to="/otros" :class="{ active: route.name === 'others' }">Otros</RouterLink>
           <RouterLink to="/como-comprar" :class="{ active: route.name === 'how-to-buy' }">Como comprar</RouterLink>
+          <RouterLink to="/preguntas-frecuentes" :class="{ active: route.name === 'faq' }">FAQ</RouterLink>
           <button
             type="button"
             class="cart-btn"
@@ -152,24 +153,15 @@ watch(
 
       <div class="footer-grid">
         <section class="footer-section">
+          <span class="footer-label">Catalogo y compras</span>
+          <p>Explora articulos por categoria, agrega al carrito y envia tu solicitud para confirmar disponibilidad con la tienda.</p>
+          <RouterLink to="/zapatillas" class="footer-inline-link">Ir al catalogo</RouterLink>
+        </section>
+
+        <section class="footer-section">
           <span class="footer-label">Como comprar</span>
-          <p>Agrega productos al carrito, envia tu solicitud y coordina la confirmacion final directamente con la tienda.</p>
+          <p>Revisa el flujo completo de reserva, confirmacion y coordinacion final del pedido por WhatsApp.</p>
           <RouterLink to="/como-comprar" class="footer-inline-link">Ver guia completa</RouterLink>
-        </section>
-
-        <section class="footer-section">
-          <span class="footer-label">Institucional</span>
-          <p>Conoce mejor la propuesta comercial, el funcionamiento del catalogo y las respuestas a dudas frecuentes.</p>
-          <div class="footer-link-list">
-            <RouterLink to="/nosotros" class="footer-inline-link">Nosotros</RouterLink>
-            <RouterLink to="/preguntas-frecuentes" class="footer-inline-link">Preguntas frecuentes</RouterLink>
-            <RouterLink to="/politicas" class="footer-inline-link">Politicas</RouterLink>
-          </div>
-        </section>
-
-        <section class="footer-section">
-          <span class="footer-label">Pagos y reservas</span>
-          <p>No contamos con pasarela de pago integrada. Toda reserva es temporal y la venta final se confirma con la tienda.</p>
         </section>
 
         <section class="footer-section">
@@ -185,6 +177,16 @@ watch(
               <span v-if="index < socialLinks.length - 1"> | </span>
             </template>
           </p>
+        </section>
+
+        <section class="footer-section">
+          <span class="footer-label">Institucional</span>
+          <p>Conoce mejor la propuesta comercial, nuestras politicas y respuestas a preguntas frecuentes.</p>
+          <div class="footer-link-list">
+            <RouterLink to="/nosotros" class="footer-inline-link">Nosotros</RouterLink>
+            <RouterLink to="/preguntas-frecuentes" class="footer-inline-link">Preguntas frecuentes</RouterLink>
+            <RouterLink to="/politicas" class="footer-inline-link">Politicas</RouterLink>
+          </div>
         </section>
       </div>
 
@@ -252,6 +254,7 @@ watch(
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-light);
+  box-shadow: 0 10px 28px rgba(6, 11, 20, 0.38);
   transition: all 0.3s ease;
 }
 
@@ -305,7 +308,7 @@ watch(
 .nav-container {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 1rem 1.5rem;
+  padding: 0.9rem 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -344,7 +347,7 @@ watch(
 
 .logo-copy span {
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(226, 232, 240, 0.92);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
@@ -353,20 +356,25 @@ watch(
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
 }
 
 .nav-links a {
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.86);
-  transition: color 0.2s ease;
+  color: rgba(226, 232, 240, 0.92);
+  transition: all 0.2s ease;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  border: 1px solid transparent;
+  padding: 0.42rem 0.78rem;
+  border-radius: var(--radius-full);
 }
 
 .nav-links a.active,
 .nav-links a:hover {
   color: #fff;
+  background: rgba(34, 211, 238, 0.14);
+  border-color: rgba(125, 211, 252, 0.42);
 }
 
 .cart-btn {
@@ -374,9 +382,9 @@ watch(
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(34, 211, 238, 0.14);
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(125, 211, 252, 0.45);
   padding: 0.5rem 1rem;
   border-radius: var(--radius-full);
   font-weight: 600;
@@ -388,7 +396,7 @@ watch(
 }
 
 .cart-btn:hover {
-  background: rgba(255, 255, 255, 0.24);
+  background: rgba(34, 211, 238, 0.25);
   color: #fff;
 }
 
@@ -411,7 +419,7 @@ watch(
 .main-content {
   flex: 1;
   width: 100%;
-  max-width: var(--max-width);
+  max-width: 1320px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
 }
@@ -426,6 +434,8 @@ watch(
   border-top: 1px solid var(--border-light);
   margin-top: 4rem;
   scroll-margin-top: 6rem;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.2));
+  border-radius: 1.25rem 1.25rem 0 0;
 }
 
 .footer-brand {
@@ -463,7 +473,7 @@ watch(
 .footer-inline-link {
   display: inline-flex;
   margin-top: 0.75rem;
-  color: #86efac;
+  color: #67e8f9;
   font-weight: 600;
 }
 
@@ -486,8 +496,8 @@ watch(
   padding: 1rem 1.1rem;
   text-align: center;
   border-radius: var(--radius-md);
-  background: rgba(134, 239, 172, 0.06);
-  border: 1px solid rgba(134, 239, 172, 0.18);
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(125, 211, 252, 0.24);
   align-items: center;
 }
 
@@ -505,7 +515,7 @@ watch(
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #bbf7d0;
+  color: #a5f3fc;
 }
 
 .footer-section p,
@@ -523,12 +533,12 @@ watch(
 }
 
 .footer a {
-  color: #86efac;
+  color: #67e8f9;
   font-weight: 600;
 }
 
 .footer a:hover {
-  color: #bbf7d0;
+  color: #cffafe;
 }
 
 .footer-note {

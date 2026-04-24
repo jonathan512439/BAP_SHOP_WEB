@@ -25,7 +25,7 @@ const categoryTitle = computed(() => {
 
 const categoryDescription = computed(() => {
   return categoryType.value === PRODUCT_TYPE.SNEAKER
-    ? 'Descubre pares disponibles en nuestra tineda BAP Shop.'
+    ? 'Descubre pares disponibles en nuestra tienda BAP Shop.'
     : 'Encuentra articulos complementarios seleccionados para tu estilo.'
 })
 
@@ -37,6 +37,7 @@ const { currentPage, visibleProducts, totalPages, paginatedProducts, applyRouteF
 const availableCount = computed(
   () => visibleProducts.value.filter((product) => product.status === PRODUCT_STATUS.ACTIVE).length
 )
+const listedCount = computed(() => visibleProducts.value.length)
 
 
 
@@ -56,8 +57,14 @@ onMounted(() => {
         <p class="subtitle">{{ categoryDescription }}</p>
       </div>
       <div class="hero-meta glass-card">
-        <span class="meta-label">Disponibles ahora</span>
-        <strong class="meta-value">{{ availableCount }} articulos</strong>
+        <div class="meta-item">
+          <span class="meta-label">Disponibles ahora</span>
+          <strong class="meta-value">{{ availableCount }} articulos</strong>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Mostrando en lista</span>
+          <strong class="meta-value">{{ listedCount }} resultados</strong>
+        </div>
       </div>
     </div>
     
@@ -140,15 +147,22 @@ onMounted(() => {
 }
 
 .hero-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
   align-self: stretch;
-  justify-content: center;
-  align-items: center;
+  justify-content: stretch;
+  align-items: start;
   min-height: 128px;
   padding: 1.25rem 1.5rem;
-  text-align: center;
+  text-align: left;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 0;
 }
 
 .meta-label {
@@ -159,7 +173,7 @@ onMounted(() => {
 }
 
 .meta-value {
-  font-size: 2rem;
+  font-size: clamp(1.2rem, 2.1vw, 1.8rem);
   font-family: var(--font-heading);
 }
 
@@ -172,5 +186,13 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .hero-meta {
+    grid-template-columns: minmax(0, 1fr);
+    text-align: center;
+    align-items: center;
+  }
 }
 </style>

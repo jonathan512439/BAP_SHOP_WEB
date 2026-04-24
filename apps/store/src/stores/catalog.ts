@@ -1,11 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { PRODUCT_TYPE, type CatalogCard, type CatalogFilters, type CatalogManifest, type ProductType } from '@bap-shop/shared'
+import { PRODUCT_STATUS, PRODUCT_TYPE, type CatalogCard, type CatalogFilters, type CatalogManifest, type ProductType } from '@bap-shop/shared'
 
 const ASSETS_DOMAIN =
   (import.meta.env.VITE_ASSETS_URL || 'https://pub-470a5675dc7d4e9d949688372b59b080.r2.dev/public')
     .trim()
     .replace(/\/+$/, '')
+
+const STATUS_PRIORITY: Record<string, number> = {
+  [PRODUCT_STATUS.ACTIVE]: 0,
+  [PRODUCT_STATUS.RESERVED]: 1,
+  [PRODUCT_STATUS.SOLD]: 2,
+  [PRODUCT_STATUS.HIDDEN]: 3,
+  [PRODUCT_STATUS.DRAFT]: 4,
+}
 
 export const useCatalogStore = defineStore('catalog', () => {
   const isLoaded = ref(false)
@@ -95,6 +103,10 @@ export const useCatalogStore = defineStore('catalog', () => {
       if (selectedCondition.value && product.physical_condition !== selectedCondition.value) return false
       if (applySneakerFilters && selectedSize.value && product.size !== selectedSize.value) return false
       return true
+    }).slice().sort((a, b) => {
+      const statusDiff = (STATUS_PRIORITY[a.status] ?? 999) - (STATUS_PRIORITY[b.status] ?? 999)
+      if (statusDiff !== 0) return statusDiff
+      return a.sort_order - b.sort_order
     })
   }
 

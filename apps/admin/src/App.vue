@@ -12,16 +12,16 @@ const isLoginRoute = computed(() => route.name === 'login')
 const isSidebarOpen = ref(false)
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
-    dashboard: 'Dashboard',
-    products: 'Productos',
+    dashboard: 'Resumen general',
+    products: 'Catalogo de productos',
     'product-new': 'Nuevo Producto',
     'product-edit': 'Editar Producto',
     brands: 'Marcas y Modelos',
-    orders: 'Pedidos',
+    orders: 'Gestion de pedidos',
     promotions: 'Promociones',
-    settings: 'Ajustes',
+    settings: 'Ajustes del sistema',
     audit: 'Auditoria',
-    help: 'Ayuda',
+    help: 'Centro de ayuda',
     login: 'Login',
   }
 
@@ -100,7 +100,7 @@ watch(
         </div>
         <div class="user-menu">
           <img v-if="brandLogoSrc" :src="brandLogoSrc" alt="BAP Shop" class="topbar-logo" />
-          <span>Admin</span>
+          <span>Panel Admin</span>
         </div>
       </header>
       <div class="page-container">
@@ -157,12 +157,17 @@ watch(
 
 .topbar {
   height: 64px;
-  background: var(--bg-secondary);
+  background: linear-gradient(90deg, rgba(18, 28, 48, 0.95), rgba(26, 39, 64, 0.88));
   border-bottom: 1px solid var(--border-light);
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .user-menu {
@@ -200,7 +205,7 @@ watch(
   padding: 0;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  background: var(--bg-secondary);
+  background: rgba(11, 18, 32, 0.65);
   align-items: center;
   justify-content: center;
   flex-direction: column;

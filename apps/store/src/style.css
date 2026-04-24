@@ -4,25 +4,25 @@
    ========================================================================== */
 
 :root {
-  /* Colors - Sleek Dark Mode base */
-  --bg-main: #0a0a0b;
-  --bg-secondary: #121214;
-  --bg-tertiary: #1c1c1f;
-  
-  --surface-glass: rgba(18, 18, 20, 0.75);
-  --surface-glass-hover: rgba(28, 28, 31, 0.85);
-  
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  
-  --border-light: rgba(255, 255, 255, 0.08);
-  --border-focus: rgba(255, 255, 255, 0.2);
-  
-  /* Accent Colors (Vibrant Green for conversions / sneaker vibe) */
-  --accent-primary: #10b981;
-  --accent-hover: #059669;
-  --accent-glow: rgba(16, 185, 129, 0.25);
+  /* Colors - Deep Navy */
+  --bg-main: #060b14;
+  --bg-secondary: #0f172a;
+  --bg-tertiary: #162235;
+
+  --surface-glass: rgba(15, 23, 42, 0.76);
+  --surface-glass-hover: rgba(22, 34, 53, 0.88);
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+
+  --border-light: rgba(148, 163, 184, 0.22);
+  --border-focus: rgba(125, 211, 252, 0.62);
+
+  /* Accent Colors */
+  --accent-primary: #22d3ee;
+  --accent-hover: #06b6d4;
+  --accent-glow: rgba(34, 211, 238, 0.26);
   
   /* Typography */
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
@@ -60,6 +60,10 @@ html {
 body {
   min-height: 100vh;
   overflow-x: hidden;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(34, 211, 238, 0.08), transparent 34%),
+    radial-gradient(circle at 88% 2%, rgba(99, 102, 241, 0.1), transparent 28%),
+    var(--bg-main);
 }
 
 a {

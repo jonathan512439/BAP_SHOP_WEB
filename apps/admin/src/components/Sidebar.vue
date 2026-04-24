@@ -19,16 +19,36 @@ const brandingStore = useBrandingStore()
 const brandLogoSrc = computed(() => brandingStore.branding.brand_logo_url || '')
 const brandTitle = computed(() => brandingStore.branding.store_name || 'BAP Shop')
 
-const navItems = [
-  { name: 'Dashboard', path: '/' },
-  { name: 'Catalogo', path: '/products' },
-  { name: 'Marcas y Modelos', path: '/brands' },
-  { name: 'Promociones', path: '/promotions' },
-  { name: 'Pedidos', path: '/orders' },
-  { name: 'Ajustes', path: '/settings' },
-  { name: 'Auditoria', path: '/audit' },
-  { name: 'Ayuda', path: '/help' },
+const navSections = [
+  {
+    label: 'Operacion',
+    items: [
+      { name: 'Dashboard', path: '/' },
+      { name: 'Pedidos', path: '/orders' },
+      { name: 'Promociones', path: '/promotions' },
+    ],
+  },
+  {
+    label: 'Catalogo',
+    items: [
+      { name: 'Productos', path: '/products' },
+      { name: 'Marcas y Modelos', path: '/brands' },
+    ],
+  },
+  {
+    label: 'Configuracion',
+    items: [
+      { name: 'Ajustes', path: '/settings' },
+      { name: 'Auditoria', path: '/audit' },
+      { name: 'Ayuda', path: '/help' },
+    ],
+  },
 ]
+
+const isActive = (path: string) => {
+  if (path === '/') return route.path === '/'
+  return route.path === path || route.path.startsWith(`${path}/`)
+}
 
 const handleLogout = async () => {
   await authStore.logout()
@@ -47,27 +67,23 @@ const handleLogout = async () => {
           <p>Panel de control</p>
         </div>
       </div>
-      <button
-        type="button"
-        class="close-btn"
-        aria-label="Cerrar menu lateral"
-        @click="emit('close')"
-      >
-        ×
-      </button>
+      <button type="button" class="close-btn" aria-label="Cerrar menu lateral" @click="emit('close')">×</button>
     </div>
 
     <nav class="nav-menu">
-      <router-link
-        v-for="item in navItems"
-        :key="item.path"
-        :to="item.path"
-        class="nav-link"
-        :class="{ active: route.path === item.path }"
-        @click="emit('close')"
-      >
-        {{ item.name }}
-      </router-link>
+      <section v-for="section in navSections" :key="section.label" class="nav-section">
+        <h3 class="nav-section-label">{{ section.label }}</h3>
+        <router-link
+          v-for="item in section.items"
+          :key="item.path"
+          :to="item.path"
+          class="nav-link"
+          :class="{ active: isActive(item.path) }"
+          @click="emit('close')"
+        >
+          {{ item.name }}
+        </router-link>
+      </section>
     </nav>
 
     <div class="sidebar-footer">
@@ -86,11 +102,11 @@ const handleLogout = async () => {
 }
 
 .brand {
-  height: 64px;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
+  padding: 0 1rem;
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -137,17 +153,32 @@ const handleLogout = async () => {
 
 .nav-menu {
   flex: 1;
-  padding: 1.5rem 1rem;
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.nav-section {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  overflow-y: auto;
+}
+
+.nav-section-label {
+  margin: 0;
+  padding: 0 0.75rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-tertiary);
 }
 
 .nav-link {
   display: flex;
   align-items: center;
-  padding: 0.75rem 1rem;
+  padding: 0.72rem 0.9rem;
   color: var(--text-secondary);
   text-decoration: none;
   border-radius: var(--radius-md);
@@ -163,11 +194,11 @@ const handleLogout = async () => {
 
 .nav-link.active {
   background: var(--accent-primary);
-  color: white;
+  color: #082032;
 }
 
 .sidebar-footer {
-  padding: 1rem;
+  padding: 0.75rem;
   border-top: 1px solid var(--border-light);
 }
 

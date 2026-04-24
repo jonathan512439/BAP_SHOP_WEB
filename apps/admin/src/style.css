@@ -3,22 +3,22 @@
    ========================================================================== */
 
 :root {
-  /* Colors - Functional Dark Mode for Dashboard */
-  --bg-main: #09090b;
-  --bg-secondary: #121214;
-  --bg-tertiary: #18181b;
-  --bg-hover: #27272a;
-  
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #71717a;
-  
-  --border-light: #27272a;
-  --border-focus: #3f3f46;
-  
+  /* Colors - Technical Slate */
+  --bg-main: #0b1220;
+  --bg-secondary: #121c30;
+  --bg-tertiary: #1a2740;
+  --bg-hover: #22324f;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+
+  --border-light: rgba(148, 163, 184, 0.25);
+  --border-focus: rgba(56, 189, 248, 0.62);
+
   /* Status Colors */
-  --accent-primary: #3b82f6; /* Blue for Admin actions */
-  --accent-hover: #2563eb;
+  --accent-primary: #38bdf8;
+  --accent-hover: #0ea5e9;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
@@ -47,6 +47,13 @@ html {
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background:
+    radial-gradient(circle at 10% 4%, rgba(56, 189, 248, 0.1), transparent 28%),
+    radial-gradient(circle at 88% 0%, rgba(99, 102, 241, 0.08), transparent 26%),
+    var(--bg-main);
 }
 
 a { text-decoration: none; color: inherit; }

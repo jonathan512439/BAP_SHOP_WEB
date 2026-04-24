@@ -56,11 +56,11 @@ const filters = ref({
 
 const statusOptions = [
   { value: '', label: 'Todos los estados' },
-  { value: 'draft', label: 'Borrador' },
   { value: 'active', label: 'Activo' },
-  { value: 'hidden', label: 'Oculto' },
   { value: 'reserved', label: 'Reservado' },
   { value: 'sold', label: 'Vendido' },
+  { value: 'hidden', label: 'Oculto' },
+  { value: 'draft', label: 'Borrador' },
 ]
 
 const typeOptions = [
@@ -240,6 +240,7 @@ onMounted(() => {
 <template>
   <div class="products-view">
     <div class="header-actions">
+      <button type="button" class="btn btn-primary" @click="router.push('/products/new')">+ Nuevo producto</button>
       <div class="filters-row">
         <input
           v-model="filters.search"
@@ -262,8 +263,6 @@ onMounted(() => {
         <button type="button" class="btn btn-secondary" @click="clearFilters">Limpiar</button>
         <button type="button" class="btn btn-secondary" @click="reloadProducts">Recargar</button>
       </div>
-
-      <button type="button" class="btn btn-primary" @click="router.push('/products/new')">+ Nuevo producto</button>
     </div>
 
     <div class="summary-grid">
@@ -402,6 +401,7 @@ onMounted(() => {
   gap: 0.75rem;
   flex-wrap: wrap;
   flex: 1;
+  justify-content: flex-end;
 }
 
 .search-input {
