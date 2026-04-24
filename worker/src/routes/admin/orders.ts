@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { markCatalogDirty } from '../../lib/catalog-dirty'
-import { nowISO } from '@bap-shop/shared'
+import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
+import { logError, serializeError } from '../../lib/logger'
+import { nowISO, VALID_ORDER_TRANSITIONS } from '@bap-shop/shared'
+import type { OrderStatus } from '@bap-shop/shared'
 
 export const adminOrdersRouter = new Hono<HonoEnv>()
 adminOrdersRouter.use('*', authMiddleware())
@@ -93,14 +97,19 @@ adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMuta
   const now = nowISO()
 
   const order = await c.env.DB.prepare('SELECT * FROM orders WHERE id = ?').bind(id).first<{
-    id: string; status: string; order_code: string
+    id: string; status: OrderStatus; order_code: string
   }>()
   if (!order) return c.json({ success: false, error: 'Pedido no encontrado' }, 404)
-  if (!['pending', 'confirmed'].includes(order.status)) {
-    return c.json({ success: false, error: `No se puede cambiar el estado de un pedido en estado "${order.status}"` }, 409)
-  }
   if (order.status === status) {
     return c.json({ success: false, error: `El pedido ya está en estado "${status}"` }, 409)
+  }
+
+  const validNext = VALID_ORDER_TRANSITIONS[order.status] ?? []
+  if (!validNext.includes(status)) {
+    return c.json({
+      success: false,
+      error: `No se puede cambiar un pedido de "${order.status}" a "${status}"`,
+    }, 409)
   }
 
   // Obtener los productIds del pedido para actualizarlos
@@ -108,7 +117,24 @@ adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMuta
     'SELECT product_id FROM order_items WHERE order_id = ?'
   ).bind(id).all<{ product_id: string }>()
   const productIds = itemsResult.results.map((i) => i.product_id)
+
+  if (productIds.length === 0) {
+    return c.json({ success: false, error: 'El pedido no tiene productos asociados' }, 409)
+  }
+
   const placeholders = productIds.map(() => '?').join(', ')
+  const reservedProducts = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS cnt
+     FROM products
+     WHERE id IN (${placeholders}) AND status = 'reserved' AND reserved_order_id = ?`
+  ).bind(...productIds, id).first<{ cnt: number }>()
+
+  if ((reservedProducts?.cnt ?? 0) !== productIds.length) {
+    return c.json({
+      success: false,
+      error: 'El pedido tiene productos que ya no estan reservados correctamente. Revisa el pedido antes de cambiar su estado.',
+    }, 409)
+  }
 
   const statements: D1PreparedStatement[] = []
 
@@ -124,24 +150,26 @@ adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMuta
     statements.push(
       c.env.DB.prepare(
         `UPDATE products SET status = 'sold', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
-         WHERE id IN (${placeholders})`
-      ).bind(now, ...productIds)
+         WHERE id IN (${placeholders}) AND status = 'reserved' AND reserved_order_id = ?`
+      ).bind(now, ...productIds, id)
     )
   } else {
     // status === 'cancelled' → artículos vuelven a active
     statements.push(
       c.env.DB.prepare(
         `UPDATE products SET status = 'active', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
-         WHERE id IN (${placeholders})`
-      ).bind(now, ...productIds)
+         WHERE id IN (${placeholders}) AND status = 'reserved' AND reserved_order_id = ?`
+      ).bind(now, ...productIds, id)
     )
   }
 
   await c.env.DB.batch(statements)
   await logAction(c.env.DB, c.get('adminId'), `order.${status}`, 'order', id, { status: order.status }, { status })
 
-  // Rebuild catálogo (artículos liberados o vendidos)
-  await markCatalogDirty(c.env.DB)
+  await refreshCatalogAfterInventoryMutation(c, {
+    event: status === 'confirmed' ? 'orders_confirmed' : 'orders_cancelled',
+    orderId: id,
+  })
 
   return c.json({ success: true, data: { id, status } })
 })
@@ -177,3 +205,31 @@ adminOrdersRouter.patch('/:id/notes', rateLimitMiddleware(RATE_LIMITS.adminMutat
     },
   })
 })
+
+async function refreshCatalogAfterInventoryMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; orderId: string }
+): Promise<void> {
+  try {
+    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await c.env.DB.prepare("UPDATE settings SET value = '0' WHERE key = 'catalog_dirty'").run()
+  } catch (error) {
+    logError('catalog_rebuild_after_admin_order_update_failed', {
+      requestId: c.get('requestId'),
+      event: context.event,
+      orderId: context.orderId,
+      error: serializeError(error, c.env.ENVIRONMENT !== 'production'),
+    })
+
+    try {
+      await markCatalogDirty(c.env.DB)
+    } catch (dirtyError) {
+      logError('catalog_dirty_mark_failed', {
+        requestId: c.get('requestId'),
+        event: context.event,
+        orderId: context.orderId,
+        error: serializeError(dirtyError, c.env.ENVIRONMENT !== 'production'),
+      })
+    }
+  }
+}

@@ -18,6 +18,8 @@ export interface Env {
   R2_PUBLIC_DOMAIN: string    // ej: "assets.bapshop.com"
   STORE_DOMAIN: string        // ej: "bapshop.com"
   ADMIN_DOMAIN: string        // ej: "admin.bapshop.com"
+  ASSET_FALLBACK_ORIGIN?: string // ej: "https://api.bab-shop.com" (solo staging)
+  SESSION_IP_MODE?: 'strict' | 'subnet' | 'off'
 
   // Secretos (definidos en .dev.vars o wrangler secret)
   ADMIN_PEPPER: string        // Pepper para PBKDF2-SHA256 del hash de contraseñas

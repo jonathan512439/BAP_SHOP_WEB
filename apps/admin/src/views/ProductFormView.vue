@@ -21,6 +21,7 @@ import {
   optimizeProductImageVariants,
   type ProductImageVariants,
 } from '../lib/media'
+import { useConnectivity } from '../composables/useConnectivity'
 
 type ProductStatus = 'draft' | 'active' | 'hidden' | 'reserved' | 'sold'
 
@@ -67,6 +68,7 @@ const MAX_SOURCE_IMAGE_SIZE_BYTES = 20 * 1024 * 1024
 
 const route = useRoute()
 const router = useRouter()
+const { isOnline } = useConnectivity()
 const isEdit = route.name === 'product-edit'
 const productId = String(route.params.id ?? '')
 const publicAssetsBase =
@@ -176,7 +178,9 @@ const localValidationErrors = computed(() => {
   return issues
 })
 
-const canSubmit = computed(() => !isSaving.value && !isOptimizingImages.value && localValidationErrors.value.length === 0)
+const canSubmit = computed(() =>
+  isOnline.value && !isSaving.value && !isOptimizingImages.value && localValidationErrors.value.length === 0
+)
 
 const resetServerErrors = () => {
   formError.value = ''
@@ -367,6 +371,15 @@ const buildProductPayload = () => {
 const saveProduct = async () => {
   resetServerErrors()
 
+  if (isSaving.value) {
+    return
+  }
+
+  if (!isOnline.value) {
+    formError.value = 'No tienes conexion a internet. No se puede guardar el producto hasta reconectar.'
+    return
+  }
+
   if (localValidationErrors.value.length > 0) {
     formError.value = 'Debes rellenar todos los datos obligatorios antes de guardar el producto.'
     return
@@ -512,6 +525,10 @@ const setPrimaryImage = async (imgId: string) => {
           </ul>
         </div>
 
+        <div v-if="!isOnline" class="warning-banner" role="alert">
+          <strong>Sin conexion:</strong> recupera la conexion antes de guardar cambios o subir imagenes.
+        </div>
+
         <div class="grid-form">
           <FormField class="span-2" label="Nombre del producto" help="Nombre visible en snapshots, tienda y panel.">
             <input v-model="form.name" type="text" class="form-input" required />
@@ -631,7 +648,7 @@ const setPrimaryImage = async (imgId: string) => {
             multiple
             accept="image/jpeg,image/png,image/webp"
             class="form-input file-input"
-            :disabled="isOptimizingImages"
+            :disabled="isOptimizingImages || !isOnline"
             @change="handleFileChange"
           />
         </FormField>

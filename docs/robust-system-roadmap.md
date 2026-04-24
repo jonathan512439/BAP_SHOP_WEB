@@ -450,6 +450,22 @@ Criterio de cierre:
 - No hay mutaciones importantes sin auditoria.
 - Los errores de negocio son claros.
 
+Estado: completada en codigo y validada con tests locales.
+
+Cambios aplicados:
+
+- Se bloqueo la subida directa legacy de imagenes sin variantes optimizadas.
+- Se agrego auditoria para orden de productos, cambio de imagen principal y orden de imagenes.
+- Se valido que el ordenamiento de imagenes no reciba duplicados ni imagenes ajenas al producto.
+- Se reforzo la transicion de pedidos usando `VALID_ORDER_TRANSITIONS`.
+- Se bloqueo cancelar pedidos confirmados para no reactivar productos vendidos.
+- Al confirmar o cancelar pedidos, solo se actualizan productos reservados por ese mismo pedido.
+
+Validaciones:
+
+- `pnpm --filter worker exec tsc --noEmit`: OK.
+- `pnpm --filter worker test`: OK, 53 tests.
+
 ## Fase 8: reparadores operativos
 
 Prioridad: muy recomendable.
@@ -480,6 +496,23 @@ Criterio de cierre:
 - Se puede reparar catalogo sin tocar R2 manualmente.
 - Se puede diagnosticar inconsistencia sin editar D1 directamente.
 
+Estado: completada en codigo y documentada.
+
+Cambios aplicados:
+
+- Se agrego `pnpm --filter worker ops:health` para diagnostico read-only de D1/R2.
+- Se agrego `pnpm --filter worker ops:repair` para reparaciones controladas con `--dry-run`.
+- El diagnostico revisa imagenes con variantes faltantes, productos visibles sin imagen principal, pedidos vencidos, reservas inconsistentes, items de pedidos pendientes mal reservados y snapshots publicos faltantes.
+- El reparador puede expirar reservas vencidas, liberar reservas inconsistentes, marcar catalogo como pendiente y reconstruir snapshots publicos.
+- Se documento el procedimiento en `docs/operations/repair-tools.md`.
+
+Validaciones:
+
+- `node --check worker/scripts/ops-health-check.mjs`: OK.
+- `node --check worker/scripts/ops-repair.mjs`: OK.
+- `pnpm --filter worker exec tsc --noEmit`: OK.
+- `pnpm --filter worker test`: OK, 53 tests.
+
 ## Fase 9: UX de fallos y conectividad
 
 Prioridad: necesaria en flujos criticos.
@@ -503,6 +536,26 @@ Criterio de cierre:
 - No se crean pedidos duplicados por doble click.
 - El admin sabe si una accion fallo.
 - El cliente sabe si debe reintentar.
+
+Estado: completada en codigo y validada localmente.
+
+Cambios aplicados:
+
+- Se agrego deteccion de conectividad en store y admin.
+- Se agrego aviso global cuando el usuario pierde conexion.
+- El checkout bloquea el envio del pedido si ya esta enviando o si el cliente esta offline.
+- El formulario de productos bloquea guardado y subida de imagenes cuando el admin esta offline.
+- El cliente API del admin traduce fallos de red a mensajes entendibles, sin exponer errores tecnicos.
+- Se reforzo `useOrder` para evitar doble envio y mostrar errores claros ante perdida de conexion.
+
+Validaciones:
+
+- `pnpm typecheck:store`: OK.
+- `pnpm typecheck:admin`: OK.
+- `pnpm test:store`: OK, 17 tests.
+- `pnpm test:admin`: OK, 6 tests.
+- `pnpm build:store`: OK.
+- `pnpm build:admin`: OK.
 
 ## Fase 10: rendimiento medido
 
@@ -529,6 +582,31 @@ Criterio de cierre:
 - No hay saltos visuales graves.
 - El sitio se siente fluido en movil.
 
+Estado: completada como control local de rendimiento; pendiente repetir Lighthouse/DevTools en staging o produccion despues de desplegar.
+
+Cambios aplicados:
+
+- Se agrego reporte estatico de rendimiento con `pnpm perf:report`.
+- Se agrego modo estricto con `pnpm perf:report:strict`.
+- Se documentaron presupuestos de bundles para store y admin.
+- Se documento el procedimiento manual para medir catalogo, detalle, carrito y checkout con DevTools.
+- Se documento como revisar LCP, CLS, INP e imagenes pesadas.
+
+Resultado local actual:
+
+- Store dist total: 218.8 KiB raw / 76.6 KiB gzip estimado.
+- Store JS total: 158.9 KiB raw / 62.1 KiB gzip estimado.
+- Store CSS total: 35.4 KiB raw / 10.2 KiB gzip estimado.
+- Admin dist total: 249.8 KiB raw / 94.1 KiB gzip estimado.
+- Admin JS total: 211.1 KiB raw / 81.1 KiB gzip estimado.
+- Admin CSS total: 35.3 KiB raw / 11.4 KiB gzip estimado.
+
+Validaciones:
+
+- `node --check scripts/performance-report.mjs`: OK.
+- `pnpm perf:report`: OK, presupuestos estaticos sin advertencias.
+- `pnpm perf:report:strict`: OK.
+
 ## Fase 11: documentacion operativa
 
 Prioridad: necesaria para mantenimiento bajo.
@@ -547,6 +625,94 @@ Documentos sugeridos:
 Criterio de cierre:
 
 - Otra persona tecnica puede entender como desplegar, diagnosticar y reparar el sistema.
+
+Estado: completada.
+
+Documentos disponibles:
+
+- `docs/architecture.md`: arquitectura general, componentes, entornos, D1, R2, snapshots y seguridad base.
+- `docs/deployment/cloudflare.md`: despliegue de Worker, Pages, variables, secretos, migraciones, rollback y validacion.
+- `docs/deployment/ci-cd.md`: workflows, secretos GitHub, proteccion de rama y despliegue manual.
+- `docs/deployment/staging.md`: configuracion completa de staging.
+- `docs/operations/backups.md`: backups, retencion y restauracion basica.
+- `docs/operations/image-migration.md`: migracion, reintentos, refresco de snapshots e imagenes rotas.
+- `docs/operations/catalog-rebuild.md`: reconstruccion de catalogo publico y validacion de snapshots.
+- `docs/operations/repair-tools.md`: reparadores operativos.
+- `docs/operations/performance.md`: presupuestos, Lighthouse, DevTools y Core Web Vitals.
+- `docs/security.md`: autenticacion, CSRF, CORS, cookies, headers, rate limiting y reglas operativas.
+- `docs/security-waf-rate-limiting.md`: reglas WAF y rate limiting.
+- `docs/troubleshooting.md`: diagnostico de fallos frecuentes.
+
+## Fase 12: hardening final post-auditoria externa
+
+Prioridad: necesaria antes de cerrar robustez en produccion.
+
+Objetivo:
+
+Corregir los puntos criticos reales detectados en la revision externa, descartando falsos positivos y cerrando brechas de seguridad, resiliencia y UX sin introducir regresiones.
+
+Tareas de codigo:
+
+- Reducir sensibilidad de sesion admin por IP en `authMiddleware` para evitar cierres de sesion legitimos en redes moviles/Apple.
+- Agregar rate limiting a `GET /auth/me`.
+- Validar firma/magic-bytes real de archivos subidos (no solo MIME declarado) para variantes WebP y branding.
+- Agregar timeout con `AbortController` en cliente admin/store para requests criticos.
+- Reemplazar `alert()` por modales/toasts consistentes en admin.
+- Agregar validacion estricta de URLs sociales/banner en settings (https y formato URL valido).
+- Agregar endpoint de salud de dependencias (`/health/deps`) con chequeo basico de D1, R2 y KV.
+- Mejorar observabilidad de Turnstile: log de causa cuando falle validacion.
+- Agregar paginacion backend para `GET /admin/brands` y `GET /admin/models`.
+- Preparar idempotencia para `POST /orders` (header `Idempotency-Key` + almacenamiento temporal).
+
+Tareas de arquitectura y operacion:
+
+- Definir politica de binding de IP de sesion por entorno (`strict`/`subnet`/`off`) y documentarla.
+- Mantener fallback de assets en staging solo para pruebas; en produccion no debe existir fallback cruzado.
+- Validar limites efectivos de rate limit por endpoint y ajustarlos con trafico real.
+
+Criterio de cierre:
+
+- Login/admin no pierde sesion por cambios normales de red.
+- `auth/me`, login, mutaciones y checkout tienen limite de abuso consistente.
+- Uploads rechazan archivos con contenido invalido aunque el MIME sea correcto.
+- Admin/store muestran errores de red con timeout controlado y sin bloqueos por `alert()`.
+- Settings no aceptan URLs invalidas en campos de branding/redes.
+- Existe chequeo de salud de dependencias y se puede diagnosticar degradacion real.
+- Brands/models soportan crecimiento sin cargar listados completos en una sola respuesta.
+- Checkout soporta clave de idempotencia para evitar duplicados por reintento de red.
+
+Notas de alcance:
+
+- Se mantienen fuera de esta fase los puntos clasificados como falsos positivos o no aplicables:
+  - SQL injection por `LIKE` con placeholders.
+  - Cache-Control ausente en assets publicos.
+  - Falta de redaccion de secretos en logs.
+  - Riesgo de stock negativo (modelo actual: 1 producto = 1 unidad).
+
+Estado: completada en codigo y validada localmente.
+
+Cambios aplicados:
+
+- Sesiones admin con politica de IP configurable (`SESSION_IP_MODE`) y modo recomendado `subnet` para evitar cierres por cambios legitimos de red.
+- `GET /auth/me` protegido con rate limiting dedicado.
+- Validacion por firma real de archivo para uploads de variantes WebP y branding (no solo MIME declarado).
+- Checkout con idempotencia por `Idempotency-Key` para evitar pedidos duplicados por reintentos de red.
+- `POST /orders` conserva replay seguro cuando ya existe resultado exitoso para la misma clave.
+- Cliente admin y store con timeout de requests usando `AbortController`.
+- Reemplazo de `alert()` por modales consistentes en auditoria y promociones.
+- Validacion estricta de URLs HTTPS en ajustes sociales/branding.
+- Nuevo endpoint `GET /health/deps` con chequeo de D1, KV y R2.
+- Logging de fallas de Turnstile con `requestId` y causa.
+- Soporte de paginacion backend en `GET /admin/brands` y `GET /admin/models` mediante `page` y `limit`.
+
+Validaciones ejecutadas:
+
+- `pnpm typecheck`: OK.
+- `pnpm test:worker`: OK, 53 tests.
+- `pnpm test:admin`: OK, 6 tests.
+- `pnpm test:store`: OK, 17 tests.
+- `pnpm build:admin`: OK.
+- `pnpm build:store`: OK (con aviso esperado del generador SEO cuando no responde el fetch dinamico).
 
 ## Cloudflare Images: decision actual
 
@@ -581,6 +747,7 @@ Reevaluar Cloudflare Images si:
 9. UX de fallos.
 10. Rendimiento medido.
 11. Documentacion operativa.
+12. Hardening final post-auditoria externa.
 
 ## Estado de avance
 
@@ -591,11 +758,12 @@ Reevaluar Cloudflare Images si:
 - [x] Fase 4: observabilidad y logs.
 - [x] Fase 5: CI/CD.
 - [x] Fase 6: staging.
-- [ ] Fase 7: auditoria y consistencia backend.
-- [ ] Fase 8: reparadores operativos.
-- [ ] Fase 9: UX de fallos y conectividad.
-- [ ] Fase 10: rendimiento medido.
-- [ ] Fase 11: documentacion operativa.
+- [x] Fase 7: auditoria y consistencia backend.
+- [x] Fase 8: reparadores operativos.
+- [x] Fase 9: UX de fallos y conectividad.
+- [x] Fase 10: rendimiento medido.
+- [x] Fase 11: documentacion operativa.
+- [x] Fase 12: hardening final post-auditoria externa.
 
 ## Revision de cambios locales antes de produccion - 2026-04-19
 
@@ -622,6 +790,7 @@ Validaciones ejecutadas:
 - Fase 4: se centralizo acceso a settings en `worker/src/lib/settings.ts`.
 - Fase 4: se agrego handler global de errores Vue en admin.
 - Fase 7: se agrego validacion de parametros UUID en rutas admin.
+- Fase 7: se bloqueo la subida directa legacy sin variantes y se reforzo auditoria/consistencia en productos, imagenes y pedidos.
 - Fase 8: se agrego `markCatalogDirty()` para diferir rebuilds de catalogo.
 - Limpieza: se eliminaron archivos temporales o sensibles que no deben vivir en el repo.
 
@@ -632,7 +801,7 @@ Validaciones ejecutadas:
 - Riesgo medio-alto: el comentario de `catalog-dirty.ts` indica cron cada 2 minutos, pero `wrangler.jsonc` ejecuta `*/5`. Hay inconsistencia documental/operativa.
 - Riesgo medio: los backups incluyen usuarios admin, pero omiten hashes de contrasena. El bucket R2 de backups debe mantenerse privado y con retencion definida.
 - Riesgo medio: la CSP de Pages ya fue agregada, pero todavia debe validarse en produccion con Turnstile, API, imagenes, video y FFmpeg del admin.
-- Riesgo medio: el flujo legacy de subida directa sin variantes aun existe en el backend. Conviene retirarlo o restringirlo antes de produccion robusta.
+- Riesgo resuelto: el flujo legacy de subida directa sin variantes quedo bloqueado en el backend.
 - Riesgo medio: el sitemap contiene muchas URLs de productos generadas estaticamente. Hay que asegurar que no incluya productos ocultos, eliminados o no publicos.
 - Riesgo medio: `VALID_STATUS_TRANSITIONS.sold = []` vuelve `sold` terminal. Esto protege historial, pero impide ocultar un producto vendido si el negocio necesita retirarlo del catalogo sin borrarlo.
 - Riesgo bajo: se importo `validateUuidParams` en `worker/src/index.ts`, pero no se usa ahi. No rompe build, pero conviene limpiar imports no usados si se activa `noUnusedLocals`.
@@ -645,9 +814,52 @@ Validaciones ejecutadas:
 4. Corregir inconsistencia del cron: documentar `*/5` o cambiar a una frecuencia definida conscientemente.
 5. Completar `_headers` con CSP real para store y admin, probando Turnstile, API e imagenes.
 6. Definir si `sold` debe ser terminal absoluto o si se permite `sold -> hidden` para quitar vendidos del catalogo manteniendo historial.
-7. Retirar o bloquear el flujo legacy de subida directa sin variantes.
+7. Validar en staging que el panel admin siga subiendo imagenes mediante variantes WebP optimizadas.
 8. Asegurar que backups de R2 sean privados y tengan retencion. Evaluar si `admins` debe exportarse completo o si debe omitirse/enmascararse.
 9. Revisar sitemap generado y confirmar que solo incluya rutas publicas validas.
 10. Ejecutar pruebas manuales completas en local o staging antes de produccion: login admin, subida de imagen, activar producto, catalogo, detalle, carrito, checkout, reserva, confirmacion/cancelacion.
 11. Repetir validaciones: worker typecheck, admin build, store build y tests criticos del worker.
 12. Solo despues de estos ajustes, desplegar primero Worker, luego admin/store, y verificar produccion con DevTools.
+
+## Cierre operativo final - 2026-04-24
+
+Estado general:
+
+- Roadmap de robustez completado hasta Fase 12.
+- Validacion tecnica local completa en verde:
+  - `pnpm validate`
+  - `pnpm build:store`
+  - `pnpm build:admin`
+  - `pnpm build:worker`
+
+Acciones ejecutadas:
+
+- Backup previo de produccion creado en R2:
+  - `backups/d1/2026-04-24T02-39-57-376Z.json`
+- Deploy Worker staging:
+  - Version ID: `f09105f5-d629-494a-8d4d-557233dc291f`
+- Deploy Worker produccion:
+  - Version ID: `6bdd3bf8-610a-4b72-9b51-52936f93a247`
+
+Smoke tests HTTP realizados:
+
+- Staging:
+  - `https://api-staging.bab-shop.com/health` -> 200
+  - `https://api-staging.bab-shop.com/health/deps` -> 200
+  - `https://api-staging.bab-shop.com/settings/public` -> 200
+  - `https://api-staging.bab-shop.com/public/catalog/index.json` -> 200
+  - `https://staging.bab-shop.com` -> 200
+  - `https://admin-staging.bab-shop.com` -> 200
+- Produccion:
+  - `https://api.bab-shop.com/health` -> 200
+  - `https://api.bab-shop.com/health/deps` -> 200
+  - `https://api.bab-shop.com/settings/public` -> 200
+  - `https://api.bab-shop.com/public/catalog/index.json` -> 200
+  - `https://bab-shop.com` -> 200
+  - `https://bab-shop.com/zapatillas` -> 200
+  - `https://bab-shop.com/checkout` -> 200
+  - `https://admin.bab-shop.com` -> 200
+
+Observacion final:
+
+- El warning SEO de `generate-seo-assets.mjs` en build de store no bloquea compilacion ni despliegue.

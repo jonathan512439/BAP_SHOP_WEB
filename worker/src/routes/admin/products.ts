@@ -5,6 +5,7 @@ import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, validateUuidParams, rateLimitMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { markCatalogDirty } from '../../lib/catalog-dirty'
+import { matchesContentType } from '../../lib/file-signatures'
 import { generateId, nowISO, PRODUCT_IMAGE_VARIANT_LIMITS_BYTES, VALID_STATUS_TRANSITIONS } from '@bap-shop/shared'
 import type { ProductStatus } from '@bap-shop/shared'
 
@@ -318,8 +319,18 @@ adminProductsRouter.delete('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation
 adminProductsRouter.patch('/:id/sort', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), zValidator('json', z.object({ sort_order: z.number().int().min(0) })), async (c) => {
   const { id } = c.req.param()
   const { sort_order } = c.req.valid('json')
+
+  const product = await c.env.DB.prepare('SELECT id, status, sort_order FROM products WHERE id = ?')
+    .bind(id)
+    .first<{ id: string; status: string; sort_order: number }>()
+
+  if (!product) {
+    return c.json({ success: false, error: 'Producto no encontrado' }, 404)
+  }
+
   await c.env.DB.prepare('UPDATE products SET sort_order = ?, updated_at = ? WHERE id = ?')
     .bind(sort_order, nowISO(), id).run()
+  await logAction(c.env.DB, c.get('adminId'), 'product.sort', 'product', id, { sort_order: product.sort_order }, { sort_order })
   await markCatalogDirty(c.env.DB)
   return c.json({ success: true })
 })
@@ -340,7 +351,7 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
 
   if (contentType.includes('multipart/form-data')) {
     const parsedBody = await c.req.parseBody()
-    const files: Record<ProductImageVariantName, File> = {} as Record<ProductImageVariantName, File>
+    const files: Record<ProductImageVariantName, { bytes: ArrayBuffer }> = {} as Record<ProductImageVariantName, { bytes: ArrayBuffer }>
 
     for (const variant of PRODUCT_IMAGE_VARIANT_NAMES) {
       const file = parsedBody[variant]
@@ -357,7 +368,12 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
         return c.json({ success: false, error: `La variante ${variant} supera el limite permitido.` }, 422)
       }
 
-      files[variant] = file
+      const bytes = await file.arrayBuffer()
+      if (!matchesContentType(bytes, 'image/webp')) {
+        return c.json({ success: false, error: `La variante ${variant} no contiene un WebP valido.` }, 422)
+      }
+
+      files[variant] = { bytes }
     }
 
     const baseKey = `public/products/${id}/${imgId}`
@@ -370,7 +386,7 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
 
     await Promise.all(
       PRODUCT_IMAGE_VARIANT_NAMES.map(async (variant) => {
-        await c.env.R2.put(variantKeys[variant], await files[variant].arrayBuffer(), {
+        await c.env.R2.put(variantKeys[variant], files[variant].bytes, {
           httpMetadata: { contentType: 'image/webp' },
         })
       })
@@ -424,42 +440,13 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
     }, 201)
   }
 
-  const allowedMimes = ['image/jpeg', 'image/png', 'image/webp']
-  const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[contentType]
-
-  if (!allowedMimes.includes(contentType) || !ext) {
-    return c.json({ success: false, error: 'Formato de imagen no válido. Usa JPG, PNG o WebP.' }, 422)
-  }
-
-  const body = await c.req.arrayBuffer()
-  if (body.byteLength > 5 * 1024 * 1024) {
-    return c.json({ success: false, error: 'La imagen supera el límite de 5MB' }, 422)
-  }
-
-  const r2Key = `public/products/${id}/${imgId}.${ext}`
-
-  await c.env.R2.put(r2Key, body, { httpMetadata: { contentType } })
-
-  // Verificar si ya hay imágenes para determinar si esta es la primera (primary)
-  const existing = await c.env.DB.prepare(
-    'SELECT COUNT(*) AS cnt FROM product_images WHERE product_id = ?'
-  ).bind(id).first<{ cnt: number }>()
-  const isPrimary = !existing || existing.cnt === 0 ? 1 : 0
-
-  const now = nowISO()
-  await c.env.DB.prepare(
-    `INSERT INTO product_images (id, product_id, r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key, is_primary, sort_order, created_at)
-     VALUES (?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, ?)`
-  ).bind(imgId, id, r2Key, isPrimary, existing?.cnt ?? 0, now).run()
-
-  await logAction(c.env.DB, c.get('adminId'), 'image.upload', 'product_image', imgId, null, { product_id: id, r2_key: r2Key })
-
-  const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
-  if (productAfter?.status === 'active') {
-    await markCatalogDirty(c.env.DB)
-  }
-
-  return c.json({ success: true, data: { id: imgId, r2_key: r2Key, is_primary: isPrimary } }, 201)
+  return c.json(
+    {
+      success: false,
+      error: 'La subida directa de imagenes ya no esta permitida. Sube las variantes optimizadas WebP desde el panel.',
+    },
+    422
+  )
 })
 
 // DELETE /admin/products/:id/images/:imgId
@@ -509,13 +496,27 @@ adminProductsRouter.delete('/:id/images/:imgId', rateLimitMiddleware(RATE_LIMITS
 adminProductsRouter.patch('/:id/images/:imgId/primary', rateLimitMiddleware(RATE_LIMITS.adminMutation), csrfMiddleware(), async (c) => {
   const { id, imgId } = c.req.param()
 
-  const img = await c.env.DB.prepare('SELECT id FROM product_images WHERE id = ? AND product_id = ?').bind(imgId, id).first()
+  const img = await c.env.DB.prepare('SELECT id, is_primary FROM product_images WHERE id = ? AND product_id = ?')
+    .bind(imgId, id)
+    .first<{ id: string; is_primary: number }>()
   if (!img) return c.json({ success: false, error: 'Imagen no encontrada' }, 404)
+
+  const currentPrimary = await c.env.DB.prepare('SELECT id FROM product_images WHERE product_id = ? AND is_primary = 1')
+    .bind(id)
+    .first<{ id: string }>()
 
   await c.env.DB.batch([
     c.env.DB.prepare('UPDATE product_images SET is_primary = 0 WHERE product_id = ?').bind(id),
     c.env.DB.prepare('UPDATE product_images SET is_primary = 1 WHERE id = ?').bind(imgId),
   ])
+
+  await logAction(c.env.DB, c.get('adminId'), 'image.primary', 'product_image', imgId, {
+    product_id: id,
+    previous_primary_id: currentPrimary?.id ?? null,
+  }, {
+    product_id: id,
+    primary_id: imgId,
+  })
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
@@ -530,11 +531,36 @@ adminProductsRouter.patch('/:id/images/sort', rateLimitMiddleware(RATE_LIMITS.ad
   const { id } = c.req.param()
   const items = c.req.valid('json')
 
+  if (items.length === 0) {
+    return c.json({ success: false, error: 'Debes enviar al menos una imagen para ordenar' }, 422)
+  }
+
+  const existingImages = await c.env.DB.prepare(
+    'SELECT id, sort_order FROM product_images WHERE product_id = ?'
+  ).bind(id).all<{ id: string; sort_order: number }>()
+  const existingIds = new Set(existingImages.results.map((image) => image.id))
+  const requestedIds = new Set(items.map((item) => item.id))
+
+  if (requestedIds.size !== items.length) {
+    return c.json({ success: false, error: 'La lista de imagenes contiene duplicados' }, 422)
+  }
+
+  if (items.some((item) => !existingIds.has(item.id))) {
+    return c.json({ success: false, error: 'Una o mas imagenes no pertenecen al producto' }, 422)
+  }
+
   const statements = items.map((item) =>
     c.env.DB.prepare('UPDATE product_images SET sort_order = ? WHERE id = ? AND product_id = ?')
       .bind(item.sort_order, item.id, id)
   )
   await c.env.DB.batch(statements)
+  await logAction(c.env.DB, c.get('adminId'), 'image.sort', 'product_image', id, {
+    product_id: id,
+    images: existingImages.results,
+  }, {
+    product_id: id,
+    images: items,
+  })
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {

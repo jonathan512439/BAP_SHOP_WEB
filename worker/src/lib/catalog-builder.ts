@@ -11,7 +11,7 @@ import { applyDiscount } from '@bap-shop/shared'
 interface RawProductForSnapshot {
   id: string
   type: 'sneaker' | 'other'
-  status: 'active' | 'sold'
+  status: 'active' | 'reserved' | 'sold'
   name: string
   model_id: string | null
   model_name: string | null
@@ -74,8 +74,13 @@ export async function rebuildCatalogSnapshots(
        LEFT JOIN models m  ON m.id = p.model_id
        LEFT JOIN brands b  ON b.id = m.brand_id
        LEFT JOIN product_promotions pp ON pp.product_id = p.id
-       WHERE p.status IN ('active', 'sold')
-       ORDER BY CASE WHEN p.status = 'sold' THEN 1 ELSE 0 END ASC,
+       WHERE p.status IN ('active', 'reserved', 'sold')
+       ORDER BY CASE
+                WHEN p.status = 'active' THEN 0
+                WHEN p.status = 'reserved' THEN 1
+                WHEN p.status = 'sold' THEN 2
+                ELSE 3
+               END ASC,
                 p.sort_order ASC,
                 p.created_at DESC,
                 p.id ASC`

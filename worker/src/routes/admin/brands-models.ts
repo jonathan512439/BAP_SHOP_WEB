@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
@@ -11,16 +12,56 @@ adminBrandsRouter.use('*', authMiddleware())
 adminBrandsRouter.use('/:id/*', validateUuidParams('id'))
 adminBrandsRouter.use('/:id', validateUuidParams('id'))
 
+function parseOptionalPagination(c: Context<HonoEnv>) {
+  const pageRaw = c.req.query('page')
+  const limitRaw = c.req.query('limit')
+
+  if (!pageRaw && !limitRaw) {
+    return null
+  }
+
+  const page = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1)
+  const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '50', 10) || 50))
+  return { page, limit, offset: (page - 1) * limit }
+}
+
 // GET /admin/brands
 adminBrandsRouter.get('/', async (c) => {
-  const rows = await c.env.DB.prepare(
-    `SELECT b.id, b.name, b.slug, b.is_active, b.created_at,
-      (SELECT COUNT(*) FROM models WHERE brand_id = b.id) AS model_count,
-      (SELECT COUNT(*) FROM products p JOIN models m ON m.id = p.model_id WHERE m.brand_id = b.id) AS product_count
-     FROM brands b
-     ORDER BY b.name ASC`
-  ).all()
-  return c.json({ success: true, data: rows.results })
+  const pagination = parseOptionalPagination(c)
+
+  if (!pagination) {
+    const rows = await c.env.DB.prepare(
+      `SELECT b.id, b.name, b.slug, b.is_active, b.created_at,
+        (SELECT COUNT(*) FROM models WHERE brand_id = b.id) AS model_count,
+        (SELECT COUNT(*) FROM products p JOIN models m ON m.id = p.model_id WHERE m.brand_id = b.id) AS product_count
+       FROM brands b
+       ORDER BY b.name ASC`
+    ).all()
+    return c.json({ success: true, data: rows.results })
+  }
+
+  const [rows, total] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT b.id, b.name, b.slug, b.is_active, b.created_at,
+        (SELECT COUNT(*) FROM models WHERE brand_id = b.id) AS model_count,
+        (SELECT COUNT(*) FROM products p JOIN models m ON m.id = p.model_id WHERE m.brand_id = b.id) AS product_count
+       FROM brands b
+       ORDER BY b.name ASC
+       LIMIT ? OFFSET ?`
+    ).bind(pagination.limit, pagination.offset).all(),
+    c.env.DB.prepare('SELECT COUNT(*) AS cnt FROM brands').first<{ cnt: number }>(),
+  ])
+
+  return c.json({
+    success: true,
+    data: rows.results,
+    meta: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total: total?.cnt ?? 0,
+      totalPages: Math.max(1, Math.ceil((total?.cnt ?? 0) / pagination.limit)),
+    },
+  })
 })
 
 // POST /admin/brands
@@ -116,16 +157,45 @@ adminModelsRouter.use('/:id', validateUuidParams('id'))
 // GET /admin/models?brand_id=
 adminModelsRouter.get('/', async (c) => {
   const brandId = c.req.query('brand_id')
+  const pageRaw = c.req.query('page')
+  const limitRaw = c.req.query('limit')
+  const usePagination = !!(pageRaw || limitRaw)
+  const page = Math.max(1, parseInt(pageRaw ?? '1', 10) || 1)
+  const limit = Math.min(200, Math.max(1, parseInt(limitRaw ?? '50', 10) || 50))
+  const offset = (page - 1) * limit
   let query = `SELECT m.id, m.brand_id, m.name, m.slug, m.is_active, m.created_at,
     b.name AS brand_name,
     (SELECT COUNT(*) FROM products WHERE model_id = m.id) AS product_count
    FROM models m JOIN brands b ON b.id = m.brand_id`
-  const bindings: string[] = []
+  const bindings: Array<string | number> = []
   if (brandId) { query += ' WHERE m.brand_id = ?'; bindings.push(brandId) }
   query += ' ORDER BY b.name ASC, m.name ASC'
+  if (usePagination) {
+    query += ' LIMIT ? OFFSET ?'
+    bindings.push(limit, offset)
+  }
 
   const rows = await c.env.DB.prepare(query).bind(...bindings).all()
-  return c.json({ success: true, data: rows.results })
+
+  if (!usePagination) {
+    return c.json({ success: true, data: rows.results })
+  }
+
+  const totalQuery = brandId
+    ? c.env.DB.prepare('SELECT COUNT(*) AS cnt FROM models WHERE brand_id = ?').bind(brandId)
+    : c.env.DB.prepare('SELECT COUNT(*) AS cnt FROM models')
+  const total = await totalQuery.first<{ cnt: number }>()
+
+  return c.json({
+    success: true,
+    data: rows.results,
+    meta: {
+      page,
+      limit,
+      total: total?.cnt ?? 0,
+      totalPages: Math.max(1, Math.ceil((total?.cnt ?? 0) / limit)),
+    },
+  })
 })
 
 const modelSchema = z.object({

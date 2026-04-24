@@ -38,6 +38,8 @@ const isConfirmingDisable = ref(false)
 const editingProductId = ref<string | null>(null)
 const productIdPendingDisable = ref<string | null>(null)
 const feedback = ref('')
+const actionErrorTitle = ref('')
+const actionErrorMessage = ref('')
 const filters = ref({
   search: '',
   status: '',
@@ -166,7 +168,8 @@ const fetchData = async () => {
     products.value = productsRes.data
     promos.value = promosRes.data
   } catch (error: any) {
-    alert(`Error cargando promociones: ${error.message}`)
+    actionErrorTitle.value = 'No se pudieron cargar las promociones'
+    actionErrorMessage.value = error?.message || 'Intenta nuevamente en unos segundos.'
   } finally {
     isLoading.value = false
   }
@@ -211,7 +214,8 @@ const savePromotion = async () => {
   if (!editingProductId.value) return
 
   if (!form.value.startsAt || !form.value.endsAt) {
-    alert('Debes completar fecha de inicio y fin.')
+    actionErrorTitle.value = 'Datos incompletos'
+    actionErrorMessage.value = 'Debes completar fecha de inicio y fin.'
     return
   }
 
@@ -233,7 +237,8 @@ const savePromotion = async () => {
     feedback.value = 'Promoción guardada. Recarga la tienda si estaba abierta para ver el precio actualizado.'
     closeEditor()
   } catch (error: any) {
-    alert(`Error guardando promocion: ${error.message}`)
+    actionErrorTitle.value = 'No se pudo guardar la promocion'
+    actionErrorMessage.value = error?.message || 'Revisa los datos e intenta nuevamente.'
   } finally {
     isSaving.value = false
   }
@@ -247,10 +252,16 @@ const disablePromo = async () => {
     await fetchData()
     closeDisableModal()
   } catch (error: any) {
-    alert(`Error desactivando promocion: ${error.message}`)
+    actionErrorTitle.value = 'No se pudo desactivar la promocion'
+    actionErrorMessage.value = error?.message || 'Intenta nuevamente.'
   } finally {
     isConfirmingDisable.value = false
   }
+}
+
+const closeActionErrorModal = () => {
+  actionErrorTitle.value = ''
+  actionErrorMessage.value = ''
 }
 
 onMounted(() => {
@@ -448,6 +459,17 @@ watch(
       :is-loading="isConfirmingDisable"
       @cancel="closeDisableModal"
       @confirm="disablePromo"
+    />
+
+    <BaseConfirmModal
+      :is-open="!!actionErrorTitle"
+      :title="actionErrorTitle"
+      :message="actionErrorMessage"
+      confirm-label="Entendido"
+      variant="neutral"
+      single-action
+      @confirm="closeActionErrorModal"
+      @cancel="closeActionErrorModal"
     />
   </div>
 </template>

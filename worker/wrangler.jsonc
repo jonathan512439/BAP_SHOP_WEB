@@ -29,7 +29,8 @@
 		"ENVIRONMENT": "development",
 		"STORE_DOMAIN": "localhost:5173",
 		"ADMIN_DOMAIN": "localhost:5174",
-		"R2_PUBLIC_DOMAIN": "pub-470a5675dc7d4e9d949688372b59b080.r2.dev"
+		"R2_PUBLIC_DOMAIN": "pub-470a5675dc7d4e9d949688372b59b080.r2.dev",
+		"SESSION_IP_MODE": "off"
 	},
 	"triggers": {
 		"crons": []
@@ -47,7 +48,8 @@
 				"ENVIRONMENT": "production",
 				"STORE_DOMAIN": "bab-shop.com",
 				"ADMIN_DOMAIN": "admin.bab-shop.com",
-				"R2_PUBLIC_DOMAIN": "api.bab-shop.com"
+				"R2_PUBLIC_DOMAIN": "api.bab-shop.com",
+				"SESSION_IP_MODE": "subnet"
 			},
 			"d1_databases": [
 				{
@@ -78,13 +80,15 @@
 				"ENVIRONMENT": "staging",
 				"STORE_DOMAIN": "staging.bab-shop.com",
 				"ADMIN_DOMAIN": "admin-staging.bab-shop.com",
-				"R2_PUBLIC_DOMAIN": "api-staging.bab-shop.com"
+				"R2_PUBLIC_DOMAIN": "api-staging.bab-shop.com",
+				"ASSET_FALLBACK_ORIGIN": "https://api.bab-shop.com",
+				"SESSION_IP_MODE": "subnet"
 			},
 			"d1_databases": [
 				{
 					"binding": "DB",
-					"database_name": "bap-shop-db-staging",
-					"database_id": "c7c1dfdc-e0e5-46ec-9061-2a707a53fb3a"
+					"database_name": "bap-shop-db-staging-copy",
+					"database_id": "a5c0df1f-12ba-40bb-a5c4-f39eca9781ff"
 				}
 			],
 			"r2_buckets": [

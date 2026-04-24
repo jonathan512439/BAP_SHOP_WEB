@@ -3,9 +3,11 @@ import { RouterView, useRoute } from 'vue-router'
 import { computed, onMounted, ref, watch } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import { useBrandingStore } from './stores/branding'
+import { useConnectivity } from './composables/useConnectivity'
 
 const route = useRoute()
 const brandingStore = useBrandingStore()
+const { isOnline } = useConnectivity()
 const isLoginRoute = computed(() => route.name === 'login')
 const isSidebarOpen = ref(false)
 const pageTitle = computed(() => {
@@ -66,6 +68,10 @@ watch(
 </script>
 
 <template>
+  <div v-if="!isOnline" class="connection-banner" role="alert">
+    Sin conexion a internet. Evita guardar cambios hasta recuperar la conexion.
+  </div>
+
   <div class="admin-layout" v-if="!isLoginRoute">
     <div
       v-if="isSidebarOpen"
@@ -114,6 +120,23 @@ watch(
   height: 100vh;
   overflow: hidden;
   background-color: var(--bg-main);
+}
+
+.connection-banner {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  background: #7f1d1d;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.connection-banner + .admin-layout,
+.connection-banner + .login-layout {
+  padding-top: 2.75rem;
 }
 
 .sidebar {

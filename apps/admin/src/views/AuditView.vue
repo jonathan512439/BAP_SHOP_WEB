@@ -4,11 +4,14 @@ import { apiClient } from '../api/client'
 import FormDateInput from '../components/FormDateInput.vue'
 import BasePagination from '../components/BasePagination.vue'
 import BaseTable from '../components/BaseTable.vue'
+import BaseConfirmModal from '../components/BaseConfirmModal.vue'
 
 const logs = ref<any[]>([])
 const isLoading = ref(true)
 const expandedId = ref<string | null>(null)
 const meta = ref({ page: 1, limit: 20, total: 0, totalPages: 1 })
+const errorTitle = ref('')
+const errorMessage = ref('')
 const filters = ref({
   action: '',
   entityType: '',
@@ -51,10 +54,16 @@ const fetchLogs = async (page = 1) => {
     logs.value = res.data
     meta.value = res.meta
   } catch (error: any) {
-    alert(`Error cargando logs: ${error.message}`)
+    errorTitle.value = 'No se pudieron cargar los logs'
+    errorMessage.value = error?.message || 'Intenta nuevamente en unos segundos.'
   } finally {
     isLoading.value = false
   }
+}
+
+const closeErrorModal = () => {
+  errorTitle.value = ''
+  errorMessage.value = ''
 }
 
 const applyFilters = async () => {
@@ -167,6 +176,17 @@ onMounted(() => {
       />
     </div>
   </div>
+
+  <BaseConfirmModal
+    :is-open="!!errorTitle"
+    :title="errorTitle"
+    :message="errorMessage"
+    confirm-label="Entendido"
+    variant="neutral"
+    single-action
+    @confirm="closeErrorModal"
+    @cancel="closeErrorModal"
+  />
 </template>
 
 <style scoped>

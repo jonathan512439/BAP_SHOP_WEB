@@ -11,65 +11,71 @@ export const useCatalogStore = defineStore('catalog', () => {
   const isLoaded = ref(false)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
-  
+  let fetchCatalogPromise: Promise<void> | null = null
+
   const products = ref<CatalogCard[]>([])
   const filters = ref<CatalogFilters | null>(null)
 
-  // Filters state
   const selectedBrand = ref<string>('')
   const selectedModel = ref<string>('')
   const selectedCondition = ref<string>('')
   const selectedSize = ref<string>('')
-  
+
   const fetchCatalog = async () => {
-    if (isLoading.value) return
-    
-    isLoading.value = true
-    error.value = null
-    
-    try {
-      // 1. Fetch manifest.json to check catalog version
-      const manifestRes = await fetch(`${ASSETS_DOMAIN}/manifest.json`)
-      if (!manifestRes.ok) throw new Error('Error al verificar versión del catálogo')
-      const manifest = (await manifestRes.json()) as CatalogManifest
+    if (fetchCatalogPromise) return fetchCatalogPromise
 
-      const localVersion = sessionStorage.getItem('bap_catalog_version')
-      const localProducts = sessionStorage.getItem('bap_catalog_index')
-      const localFilters = sessionStorage.getItem('bap_catalog_filters')
+    fetchCatalogPromise = (async () => {
+      isLoading.value = true
+      error.value = null
 
-      // 2. Compare versions, if same and local storage exists, load from session cache
-      if (localVersion === String(manifest.catalog_version) && localProducts && localFilters) {
-        products.value = JSON.parse(localProducts)
-        filters.value = JSON.parse(localFilters)
+      try {
+        const manifestResponse = await fetch(`${ASSETS_DOMAIN}/manifest.json`)
+        if (!manifestResponse.ok) throw new Error('Error al verificar version del catalogo')
+        const manifest = (await manifestResponse.json()) as CatalogManifest
+
+        const localVersion = sessionStorage.getItem('bap_catalog_version')
+        const localProducts = sessionStorage.getItem('bap_catalog_index')
+        const localFilters = sessionStorage.getItem('bap_catalog_filters')
+
+        if (localVersion === String(manifest.catalog_version) && localProducts && localFilters) {
+          products.value = JSON.parse(localProducts)
+          filters.value = JSON.parse(localFilters)
+          isLoaded.value = true
+          return
+        }
+
+        const [productsResponse, filtersResponse] = await Promise.all([
+          fetch(`${ASSETS_DOMAIN}/catalog/index.json`),
+          fetch(`${ASSETS_DOMAIN}/catalog/filters.json`),
+        ])
+
+        if (!productsResponse.ok || !filtersResponse.ok) {
+          throw new Error('Error al cargar el catalogo')
+        }
+
+        const nextProducts = await productsResponse.json()
+        const nextFilters = await filtersResponse.json()
+
+        products.value = nextProducts
+        filters.value = nextFilters
+
+        sessionStorage.setItem('bap_catalog_index', JSON.stringify(nextProducts))
+        sessionStorage.setItem('bap_catalog_filters', JSON.stringify(nextFilters))
+        sessionStorage.setItem('bap_catalog_version', String(manifest.catalog_version))
+
         isLoaded.value = true
-        return
+      } catch (err: unknown) {
+        error.value = err instanceof Error ? err.message : 'Error de red'
+        console.error(err)
+      } finally {
+        isLoading.value = false
       }
+    })()
 
-      // 3. Otherwise fetch the new catalog
-      const [productsRes, filtersRes] = await Promise.all([
-        fetch(`${ASSETS_DOMAIN}/catalog/index.json`),
-        fetch(`${ASSETS_DOMAIN}/catalog/filters.json`)
-      ])
-      
-      if (!productsRes.ok || !filtersRes.ok) throw new Error('Error al cargar el catálogo')
-      
-      const newProducts = await productsRes.json()
-      const newFilters = await filtersRes.json()
-
-      products.value = newProducts
-      filters.value = newFilters
-
-      // 4. Update session storage cache
-      sessionStorage.setItem('bap_catalog_index', JSON.stringify(newProducts))
-      sessionStorage.setItem('bap_catalog_filters', JSON.stringify(newFilters))
-      sessionStorage.setItem('bap_catalog_version', String(manifest.catalog_version))
-
-      isLoaded.value = true
-    } catch (err: any) {
-      error.value = err.message || 'Error de red'
-      console.error(err)
+    try {
+      await fetchCatalogPromise
     } finally {
-      isLoading.value = false
+      fetchCatalogPromise = null
     }
   }
 
@@ -80,14 +86,14 @@ export const useCatalogStore = defineStore('catalog', () => {
   })
 
   const getFilteredProducts = (type?: ProductType) => {
-    return products.value.filter((p) => {
-      const applySneakerFilters = (type ?? p.type) === PRODUCT_TYPE.SNEAKER
+    return products.value.filter((product) => {
+      const applySneakerFilters = (type ?? product.type) === PRODUCT_TYPE.SNEAKER
 
-      if (type && p.type !== type) return false
-      if (applySneakerFilters && selectedBrand.value && p.brand?.id !== selectedBrand.value) return false
-      if (applySneakerFilters && selectedModel.value && p.model?.id !== selectedModel.value) return false
-      if (selectedCondition.value && p.physical_condition !== selectedCondition.value) return false
-      if (applySneakerFilters && selectedSize.value && p.size !== selectedSize.value) return false
+      if (type && product.type !== type) return false
+      if (applySneakerFilters && selectedBrand.value && product.brand?.id !== selectedBrand.value) return false
+      if (applySneakerFilters && selectedModel.value && product.model?.id !== selectedModel.value) return false
+      if (selectedCondition.value && product.physical_condition !== selectedCondition.value) return false
+      if (applySneakerFilters && selectedSize.value && product.size !== selectedSize.value) return false
       return true
     })
   }
@@ -119,6 +125,6 @@ export const useCatalogStore = defineStore('catalog', () => {
     filteredProducts,
     sneakers,
     others,
-    clearFilters
+    clearFilters,
   }
 })

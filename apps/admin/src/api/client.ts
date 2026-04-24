@@ -1,5 +1,6 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 const CSRF_STORAGE_KEY = 'bap_admin_csrf'
+const DEFAULT_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000)
 
 function getCsrfToken(): string | null {
   const stored = readStoredCsrfToken()
@@ -40,6 +41,7 @@ type JsonBody = Record<string, unknown> | unknown[]
 interface FetchOptions extends Omit<RequestInit, 'body'> {
   params?: Record<string, string | number | undefined>
   body?: BodyInit | JsonBody | null
+  timeoutMs?: number
 }
 
 export class ApiError extends Error {
@@ -67,7 +69,7 @@ function isJsonBody(value: unknown): value is JsonBody {
 }
 
 export async function apiClient<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
-  const { params, body, ...customConfig } = options
+  const { params, body, timeoutMs, ...customConfig } = options
 
   const headers = new Headers(customConfig.headers)
   headers.set('Accept', 'application/json')
@@ -101,6 +103,25 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
     credentials: 'include',
   }
 
+  const timeout = Number.isFinite(timeoutMs) ? Number(timeoutMs) : DEFAULT_TIMEOUT_MS
+  const timeoutController = new AbortController()
+  const upstreamSignal = customConfig.signal
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      timeoutController.abort(upstreamSignal.reason)
+    } else {
+      upstreamSignal.addEventListener('abort', () => timeoutController.abort(upstreamSignal.reason), { once: true })
+    }
+  }
+
+  if (timeout > 0) {
+    timeoutId = setTimeout(() => timeoutController.abort(new Error('request_timeout')), timeout)
+  }
+
+  config.signal = timeoutController.signal
+
   if (isJsonBody(body)) {
     headers.set('Content-Type', 'application/json')
     config.body = JSON.stringify(body)
@@ -108,7 +129,29 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
     config.body = body
   }
 
-  const response = await fetch(url, config)
+  let response: Response
+  try {
+    response = await fetch(url, config)
+  } catch (error) {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError('El servidor tardo demasiado en responder. Intenta nuevamente.', 0, { cause: 'timeout' })
+    }
+
+    if (typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      throw new ApiError('Sin conexion a internet. Revisa tu red y vuelve a intentar.', 0, { cause: 'offline' })
+    }
+
+    throw new ApiError('No se pudo conectar con el servidor. Intenta nuevamente en unos segundos.', 0, {
+      cause: error instanceof Error ? error.message : 'network_error',
+    })
+  }
+  if (timeoutId) {
+    clearTimeout(timeoutId)
+  }
 
   if (response.status === 401) {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))

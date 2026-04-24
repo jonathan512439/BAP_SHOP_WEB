@@ -21,6 +21,8 @@ const product = ref<CatalogProductDetail | null>(null)
 
 const finalPrice = computed(() => product.value?.promo_price ?? product.value?.price ?? 0)
 const isSold = computed(() => product.value?.status === PRODUCT_STATUS.SOLD)
+const isReserved = computed(() => product.value?.status === PRODUCT_STATUS.RESERVED)
+const isUnavailable = computed(() => isSold.value || isReserved.value)
 const inCart = computed(() => !!product.value && cartStore.isInCart(product.value.id))
 const backRoute = computed(() => (product.value?.type === 'other' ? '/otros' : '/zapatillas'))
 
@@ -40,7 +42,7 @@ watch(
     const detailBits = [
       currentProduct.model?.name,
       currentProduct.size ? `Talla ${currentProduct.size}` : null,
-      isSold.value ? 'Agotado' : 'Disponible',
+      isReserved.value ? 'Reservado' : isSold.value ? 'Vendido' : 'Disponible',
     ].filter(Boolean)
 
     const sourceDescription = stripHtml(currentProduct.description || currentProduct.characteristics || '')
@@ -80,7 +82,7 @@ watch(
         '@type': 'Offer',
         priceCurrency: 'BOB',
         price: offerPrice.toFixed(2),
-        availability: isSold.value ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+        availability: isUnavailable.value ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
         url: productUrl,
         seller: {
           '@type': 'Organization',
@@ -154,7 +156,7 @@ onMounted(async () => {
 })
 
 const addToCart = () => {
-  if (!product.value || inCart.value || isSold.value) return
+  if (!product.value || inCart.value || isUnavailable.value) return
 
   cartStore.addItem({
     id: product.value.id,
@@ -197,8 +199,8 @@ const addToCart = () => {
     <div class="summary glass-card">
       <div class="summary-top">
         <span v-if="product.brand" class="brand">{{ product.brand.name }}</span>
-        <span class="condition" :class="{ 'is-sold': isSold }">
-          {{ isSold ? 'Agotado' : PHYSICAL_CONDITION_LABELS[product.physical_condition] }}
+        <span class="condition" :class="{ 'is-sold': isSold, 'is-reserved': isReserved }">
+          {{ isReserved ? 'Reservado' : isSold ? 'Vendido' : PHYSICAL_CONDITION_LABELS[product.physical_condition] }}
         </span>
       </div>
 
@@ -214,12 +216,21 @@ const addToCart = () => {
 
       <p v-if="product.description" class="description">{{ product.description }}</p>
       <p v-else-if="product.characteristics" class="description">{{ product.characteristics }}</p>
-      <p v-if="isSold" class="sold-note">
-        Este articulo ya fue vendido. Puedes revisar sus fotos y detalles, pero ya no esta disponible para compra.
+      <p v-if="isUnavailable" class="sold-note">
+        {{
+          isReserved
+            ? 'Este articulo esta reservado temporalmente y no esta disponible para compra en este momento.'
+            : 'Este articulo ya fue vendido. Puedes revisar sus fotos y detalles, pero ya no esta disponible para compra.'
+        }}
       </p>
         
-        <button class="btn-primary" :class="{ 'is-sold': isSold }" :disabled="inCart || isSold" @click="addToCart">
-          {{ isSold ? 'Agotado' : inCart ? 'Ya esta en tu carrito' : 'Agregar al carrito' }}
+        <button
+          class="btn-primary"
+          :class="{ 'is-sold': isSold, 'is-reserved': isReserved }"
+          :disabled="inCart || isUnavailable"
+          @click="addToCart"
+        >
+          {{ isReserved ? 'Reservado' : isSold ? 'Vendido' : inCart ? 'Ya esta en tu carrito' : 'Agregar al carrito' }}
         </button>
       <div class="purchase-note">
         <strong>Atencion: Toda entrega es con previa coordinacion.</strong>
@@ -229,7 +240,7 @@ const addToCart = () => {
 
       <div class="actions">
         
-        <button v-if="inCart && !isSold" class="btn-secondary" @click="router.push('/checkout')">Ir a checkout</button>
+        <button v-if="inCart && !isUnavailable" class="btn-secondary" @click="router.push('/checkout')">Ir a checkout</button>
         <button class="btn-secondary" @click="router.push(backRoute)">Volver al catalogo</button>
       </div>
     </div>
@@ -273,6 +284,13 @@ const addToCart = () => {
 
 .condition.is-sold {
   background: #c62828;
+  color: #fff;
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--radius-full);
+}
+
+.condition.is-reserved {
+  background: #1565c0;
   color: #fff;
   padding: 0.35rem 0.8rem;
   border-radius: var(--radius-full);
@@ -367,6 +385,13 @@ const addToCart = () => {
   background: #5b1d1d;
   color: #f6d2d2;
   border-color: rgba(198, 40, 40, 0.35);
+  cursor: not-allowed;
+}
+
+.btn-primary.is-reserved {
+  background: #1b3f66;
+  color: #dbeafe;
+  border-color: rgba(21, 101, 192, 0.38);
   cursor: not-allowed;
 }
 </style>

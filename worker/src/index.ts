@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import type { HonoEnv } from './types/env'
-import { corsMiddleware, databaseMiddleware, requestContextMiddleware, securityHeaders } from './middleware'
+import { RATE_LIMITS, corsMiddleware, databaseMiddleware, rateLimitMiddleware, requestContextMiddleware, securityHeaders } from './middleware'
 import { handleScheduled } from './cron'
 import { logError, serializeError } from './lib/logger'
 
@@ -26,7 +26,7 @@ app.use('*', corsMiddleware())
 app.use('*', securityHeaders())
 
 // Health check
-app.get('/health', (c) => {
+app.get('/health', rateLimitMiddleware(RATE_LIMITS.health), (c) => {
   return c.json({
     success: true,
     data: {
@@ -35,6 +35,50 @@ app.get('/health', (c) => {
       timestamp: new Date().toISOString(),
     },
   })
+})
+
+app.get('/health/deps', rateLimitMiddleware(RATE_LIMITS.health), async (c) => {
+  const checks = {
+    d1: { ok: true as boolean, error: null as string | null },
+    kv: { ok: true as boolean, error: null as string | null },
+    r2: { ok: true as boolean, error: null as string | null },
+  }
+
+  try {
+    await c.env.DB.prepare('SELECT 1').first()
+  } catch (error) {
+    checks.d1.ok = false
+    checks.d1.error = error instanceof Error ? error.message : 'unknown'
+  }
+
+  try {
+    await c.env.KV.get('health:probe')
+  } catch (error) {
+    checks.kv.ok = false
+    checks.kv.error = error instanceof Error ? error.message : 'unknown'
+  }
+
+  try {
+    await c.env.R2.head('public/manifest.json')
+  } catch (error) {
+    checks.r2.ok = false
+    checks.r2.error = error instanceof Error ? error.message : 'unknown'
+  }
+
+  const allOk = checks.d1.ok && checks.kv.ok && checks.r2.ok
+
+  return c.json(
+    {
+      success: allOk,
+      data: {
+        status: allOk ? 'ok' : 'degraded',
+        environment: c.env.ENVIRONMENT,
+        timestamp: new Date().toISOString(),
+        checks,
+      },
+    },
+    allOk ? 200 : 503
+  )
 })
 
 // ============================================================

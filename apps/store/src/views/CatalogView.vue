@@ -34,7 +34,9 @@ const showBrandFilters = computed(() => categoryType.value === PRODUCT_TYPE.SNEA
 const { currentPage, visibleProducts, totalPages, paginatedProducts, applyRouteFilters, clearFilters, goToPage } =
   useFilters(categoryType, ITEMS_PER_PAGE)
 
-const availableCount = computed(() => visibleProducts.value.filter((product) => product.status !== PRODUCT_STATUS.SOLD).length)
+const availableCount = computed(
+  () => visibleProducts.value.filter((product) => product.status === PRODUCT_STATUS.ACTIVE).length
+)
 
 
 

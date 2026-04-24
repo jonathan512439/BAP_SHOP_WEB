@@ -17,6 +17,8 @@ const conditionLabel = computed(() => {
 })
 
 const isSold = computed(() => props.product.status === PRODUCT_STATUS.SOLD)
+const isReserved = computed(() => props.product.status === PRODUCT_STATUS.RESERVED)
+const isUnavailable = computed(() => isSold.value || isReserved.value)
 const inCart = computed(() => cartStore.isInCart(props.product.id))
 const imageVariants = computed(() => props.product.primary_image_variants ?? null)
 const cardImageUrl = computed(() => imageVariants.value?.card_url || props.product.primary_image_url)
@@ -29,12 +31,13 @@ const imageSrcset = computed(() => {
   return `${thumbImageUrl.value} 320w, ${cardImageUrl.value} 640w`
 })
 const cartButtonLabel = computed(() => {
-  if (isSold.value) return 'Agotado'
+  if (isSold.value) return 'Vendido'
+  if (isReserved.value) return 'Reservado'
   return inCart.value ? 'En carrito' : 'Agregar'
 })
 
 const addToCart = () => {
-  if (isSold.value) return
+  if (isUnavailable.value) return
   cartStore.addItem(props.product)
 }
 
@@ -52,7 +55,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
 <template>
   <div
     class="product-card glass-card"
-    :class="{ 'is-sold': isSold }"
+    :class="{ 'is-unavailable': isUnavailable }"
     role="link"
     tabindex="0"
     :aria-label="`Ver detalle de ${product.name}`"
@@ -72,13 +75,16 @@ const onCardKeydown = (event: KeyboardEvent) => {
       />
       <div v-else class="no-image">Sin imagen</div>
 
-      <div v-if="isSold" class="sold-overlay" />
+      <div v-if="isUnavailable" class="unavailable-overlay" />
+      <div v-if="isUnavailable" class="status-watermark" :class="{ reserved: isReserved }">
+        {{ isReserved ? 'Reservado' : 'Vendido' }}
+      </div>
       
-      <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isSold }">
+      <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isUnavailable }">
         -{{ product.discount_pct }}%
       </div>
-      <div v-if="isSold" class="badge sold">
-        Agotado
+      <div v-if="isUnavailable" class="badge unavailable" :class="{ reserved: isReserved }">
+        {{ isReserved ? 'Reservado' : 'Vendido' }}
       </div>
       <div class="badge condition">
         {{ conditionLabel }}
@@ -110,11 +116,11 @@ const onCardKeydown = (event: KeyboardEvent) => {
         <button 
           @click.stop="addToCart" 
           class="btn-cart"
-          :class="{ 'in-cart': inCart && !isSold, 'is-sold': isSold }"
-          :disabled="inCart || isSold"
+          :class="{ 'in-cart': inCart && !isUnavailable, 'is-sold': isSold, 'is-reserved': isReserved }"
+          :disabled="inCart || isUnavailable"
           :aria-label="
-            isSold
-              ? `${product.name} agotado`
+            isUnavailable
+              ? `${product.name} no disponible`
               : inCart
                 ? `${product.name} ya esta en tu carrito`
                 : `Agregar ${product.name} al carrito`
@@ -181,7 +187,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
   transform: scale(1.05);
 }
 
-.product-card.is-sold .product-image {
+.product-card.is-unavailable .product-image {
   filter: grayscale(0.15) brightness(0.68);
 }
 
@@ -194,11 +200,37 @@ const onCardKeydown = (event: KeyboardEvent) => {
   color: var(--text-tertiary);
 }
 
-.sold-overlay {
+.unavailable-overlay {
   position: absolute;
   inset: 0;
   background: linear-gradient(180deg, rgba(8, 8, 8, 0.1) 0%, rgba(8, 8, 8, 0.28) 100%);
   pointer-events: none;
+}
+
+.status-watermark {
+  position: absolute;
+  left: 50%;
+  bottom: 0.75rem;
+  transform: translateX(-50%);
+  z-index: 2;
+  min-width: 9rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius-full);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  background: rgba(13, 13, 13, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.status-watermark.reserved {
+  background: rgba(11, 71, 138, 0.78);
+  border-color: rgba(173, 208, 255, 0.45);
 }
 
 .badge {
@@ -229,7 +261,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
   border: 1px solid var(--border-light);
 }
 
-.badge.sold {
+.badge.unavailable {
   left: 0.75rem;
   top: 0.75rem;
   background: #c62828;
@@ -239,8 +271,12 @@ const onCardKeydown = (event: KeyboardEvent) => {
   letter-spacing: 0.04em;
 }
 
-.badge.sold + .badge.condition,
-.badge.discount + .badge.sold + .badge.condition {
+.badge.unavailable.reserved {
+  background: #1565c0;
+}
+
+.badge.unavailable + .badge.condition,
+.badge.discount + .badge.unavailable + .badge.condition {
   top: 3.2rem;
 }
 
@@ -334,6 +370,13 @@ const onCardKeydown = (event: KeyboardEvent) => {
   background: rgba(198, 40, 40, 0.12);
   color: #f3b6b6;
   border-color: rgba(198, 40, 40, 0.4);
+  cursor: not-allowed;
+}
+
+.btn-cart.is-reserved {
+  background: rgba(21, 101, 192, 0.12);
+  color: #c6ddfb;
+  border-color: rgba(21, 101, 192, 0.4);
   cursor: not-allowed;
 }
 </style>

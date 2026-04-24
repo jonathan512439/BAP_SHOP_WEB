@@ -93,9 +93,14 @@ describe('useOrder', () => {
       'https://api.test/orders',
       expect.objectContaining({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': expect.any(String),
+        }),
       })
     )
+
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).toBeDefined()
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))
     expect(body).toEqual({

@@ -12,11 +12,6 @@ import { generateId, nowISO, addHoursISO, SESSION_DURATION_HOURS } from '@bap-sh
 
 export const authRouter = new Hono<HonoEnv>()
 
-// ============================================================
-// Helpers de cookies
-// ============================================================
-
-/** Opciones comunes de cookie según el entorno */
 function cookieOptions(isPublicEnv: boolean, maxAge: number, httpOnly: boolean) {
   return {
     path: '/' as const,
@@ -27,7 +22,6 @@ function cookieOptions(isPublicEnv: boolean, maxAge: number, httpOnly: boolean) 
   }
 }
 
-/** Setea las cookies de sesión y CSRF */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function setSessionCookies(c: Context<HonoEnv, any>, token: string, csrfToken: string) {
   const isPublicEnv = c.env.ENVIRONMENT !== 'development'
@@ -37,18 +31,40 @@ function setSessionCookies(c: Context<HonoEnv, any>, token: string, csrfToken: s
   setCookie(c, 'bap_csrf', csrfToken, cookieOptions(isPublicEnv, maxAge, false))
 }
 
-/** Limpia las cookies de sesión y CSRF */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function clearSessionCookies(c: Context<HonoEnv, any>) {
   const isPublicEnv = c.env.ENVIRONMENT !== 'development'
-
   deleteCookie(c, 'bap_session', { path: '/', secure: isPublicEnv, sameSite: isPublicEnv ? 'Lax' : 'Strict' })
   deleteCookie(c, 'bap_csrf', { path: '/', secure: isPublicEnv, sameSite: isPublicEnv ? 'Lax' : 'Strict' })
 }
 
-// ============================================================
-// POST /auth/login
-// ============================================================
+type AuthDebugDetails = Record<string, string | number | boolean | null>
+
+function authError(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  c: Context<HonoEnv, any>,
+  status: 401 | 422 | 500,
+  error: string,
+  debugCode: string,
+  debugDetails: AuthDebugDetails = {},
+) {
+  const payload: {
+    success: false
+    error: string
+    debug?: { code: string } & AuthDebugDetails
+  } = { success: false, error }
+
+  if (c.env.ENVIRONMENT !== 'production') {
+    payload.debug = { code: debugCode, ...debugDetails }
+  }
+
+  const response = c.json(payload, status)
+  if (c.env.ENVIRONMENT !== 'production') {
+    response.headers.set('x-auth-debug-code', debugCode)
+  }
+  return response
+}
+
 const loginSchema = z.object({
   username: z.string().min(1).max(100),
   password: z.string().min(1).max(200),
@@ -61,32 +77,51 @@ authRouter.post(
   zValidator('json', loginSchema),
   async (c) => {
     const { username, password, turnstileToken } = c.req.valid('json')
+    const normalizedUsername = username.trim()
 
-    // 1. Verificar Turnstile
     const turnstileSecret = c.env.TURNSTILE_SECRET_ADMIN ?? c.env.TURNSTILE_SECRET
-    const turnstileOk = await verifyTurnstile(turnstileToken, turnstileSecret)
+    const turnstileOk = await verifyTurnstile(turnstileToken, turnstileSecret, {
+      requestId: c.get('requestId'),
+      source: 'auth.login',
+      environment: c.env.ENVIRONMENT,
+    })
     if (!turnstileOk) {
-      return c.json({ success: false, error: 'Verificación de seguridad fallida' }, 422)
+      return authError(c, 422, 'Verificacion de seguridad fallida', 'turnstile_failed')
     }
 
-    // 2. Buscar admin por username
+    const pepper = c.env.ADMIN_PEPPER?.trim()
+    if (!pepper) {
+      return authError(c, 500, 'Configuracion de autenticacion invalida', 'pepper_missing')
+    }
+
     const admin = await c.env.DB.prepare(
-      'SELECT id, username, password_hash FROM admins WHERE username = ? LIMIT 1'
+      'SELECT id, username, password_hash FROM admins WHERE username = ? COLLATE NOCASE LIMIT 1'
     )
-      .bind(username)
+      .bind(normalizedUsername)
       .first<{ id: string; username: string; password_hash: string }>()
 
     if (!admin) {
-      return c.json({ success: false, error: 'Credenciales incorrectas' }, 401)
+      return authError(c, 401, 'Credenciales incorrectas', 'user_not_found', {
+        attempted_username: normalizedUsername,
+      })
     }
 
-    // 3. Verificar contraseña
-    const passwordOk = await verifyPassword(password, admin.password_hash, c.env.ADMIN_PEPPER)
+    const hashFormatOk = /^pbkdf2\$[0-9a-fA-F]+\$[0-9a-fA-F]+$/.test(admin.password_hash)
+    if (!hashFormatOk) {
+      return authError(c, 401, 'Credenciales incorrectas', 'hash_format_invalid', {
+        username: admin.username,
+        hash_prefix: admin.password_hash.slice(0, 12),
+        hash_length: admin.password_hash.length,
+      })
+    }
+
+    const passwordOk = await verifyPassword(password, admin.password_hash, pepper)
     if (!passwordOk) {
-      return c.json({ success: false, error: 'Credenciales incorrectas' }, 401)
+      return authError(c, 401, 'Credenciales incorrectas', 'password_mismatch', {
+        username: admin.username,
+      })
     }
 
-    // 4. Crear sesión
     const { token, tokenHash } = await generateSessionToken()
     const csrfToken = generateCsrfToken()
     const sessionId = generateId()
@@ -103,7 +138,6 @@ authRouter.post(
       .bind(sessionId, admin.id, tokenHash, csrfToken, ip, ua, now, expiresAt)
       .run()
 
-    // 5. Housekeeping: limpiar sesiones expiradas + limitar sesiones activas
     const MAX_SESSIONS_PER_ADMIN = 5
     await c.env.DB.prepare(
       `DELETE FROM admin_sessions WHERE admin_id = ? AND expires_at < ?`
@@ -111,7 +145,6 @@ authRouter.post(
       .bind(admin.id, now)
       .run()
 
-    // Eliminar sesiones más antiguas si se excede el límite
     await c.env.DB.prepare(
       `DELETE FROM admin_sessions
        WHERE admin_id = ? AND id NOT IN (
@@ -124,7 +157,6 @@ authRouter.post(
       .bind(admin.id, admin.id, MAX_SESSIONS_PER_ADMIN)
       .run()
 
-    // 6. Setear cookies usando Hono setCookie
     setSessionCookies(c, token, csrfToken)
 
     return c.json({
@@ -134,9 +166,6 @@ authRouter.post(
   }
 )
 
-// ============================================================
-// POST /auth/logout
-// ============================================================
 authRouter.post('/logout', authMiddleware(), csrfMiddleware(), async (c) => {
   const cookieHeader = c.req.header('Cookie') ?? ''
   const token = parseCookie(cookieHeader, 'bap_session')
@@ -149,14 +178,10 @@ authRouter.post('/logout', authMiddleware(), csrfMiddleware(), async (c) => {
   }
 
   clearSessionCookies(c)
-
   return c.json({ success: true })
 })
 
-// ============================================================
-// GET /auth/me
-// ============================================================
-authRouter.get('/me', authMiddleware(), async (c) => {
+authRouter.get('/me', authMiddleware(), rateLimitMiddleware(RATE_LIMITS.authSession), async (c) => {
   return c.json({
     success: true,
     data: {
@@ -167,9 +192,6 @@ authRouter.get('/me', authMiddleware(), async (c) => {
   })
 })
 
-// ============================================================
-// PATCH /auth/password
-// ============================================================
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(200),
   newPassword: z.string().min(8).max(200),
@@ -185,7 +207,7 @@ authRouter.patch(
     const { currentPassword, newPassword } = c.req.valid('json')
 
     if (currentPassword === newPassword) {
-      return c.json({ success: false, error: 'La nueva contraseña debe ser diferente a la actual' }, 422)
+      return c.json({ success: false, error: 'La nueva contrasena debe ser diferente a la actual' }, 422)
     }
 
     const admin = await c.env.DB.prepare(
@@ -198,12 +220,17 @@ authRouter.patch(
       return c.json({ success: false, error: 'Administrador no encontrado' }, 404)
     }
 
-    const passwordOk = await verifyPassword(currentPassword, admin.password_hash, c.env.ADMIN_PEPPER)
-    if (!passwordOk) {
-      return c.json({ success: false, error: 'La contraseña actual es incorrecta' }, 401)
+    const pepper = c.env.ADMIN_PEPPER?.trim()
+    if (!pepper) {
+      return c.json({ success: false, error: 'Configuracion de autenticacion invalida' }, 500)
     }
 
-    const newHash = await hashPassword(newPassword, c.env.ADMIN_PEPPER)
+    const passwordOk = await verifyPassword(currentPassword, admin.password_hash, pepper)
+    if (!passwordOk) {
+      return c.json({ success: false, error: 'La contrasena actual es incorrecta' }, 401)
+    }
+
+    const newHash = await hashPassword(newPassword, pepper)
 
     await c.env.DB.batch([
       c.env.DB.prepare('UPDATE admins SET password_hash = ? WHERE id = ?').bind(newHash, admin.id),

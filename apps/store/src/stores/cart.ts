@@ -45,7 +45,7 @@ export const useCartStore = defineStore('cart', () => {
   const isInCart = (id: string) => items.value.some((item) => item.id === id)
 
   const addItem = (item: CatalogCard) => {
-    if (item.status === PRODUCT_STATUS.SOLD) {
+    if (item.status !== PRODUCT_STATUS.ACTIVE) {
       return
     }
 

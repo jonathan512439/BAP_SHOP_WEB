@@ -119,7 +119,7 @@ async function rebuildIfDirty(env: Env): Promise<void> {
 
   // Limpiar JSONs huérfanos: obtener IDs visibles y comparar con R2
   const visibleIds = await env.DB.prepare(
-    `SELECT id FROM products WHERE status IN ('active', 'sold')`
+    `SELECT id FROM products WHERE status IN ('active', 'reserved', 'sold')`
   ).all<{ id: string }>()
   const validIds = new Set(visibleIds.results.map((r) => r.id))
 

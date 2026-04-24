@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
+import { matchesAnyContentType } from '../../lib/file-signatures'
 import { loadAllSettings, upsertSetting } from '../../lib/settings'
 import {
   DEFAULT_ADMIN_BANNER_TEXT,
@@ -185,24 +186,55 @@ function extractManagedBrandingKey(url: string): string | null {
   }
 }
 
+function isHttpsUrl(value: string) {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function isManagedBrandingPath(value: string) {
+  return value.startsWith('public/branding/') || value.startsWith('/public/branding/')
+}
+
+const optionalHttpsUrlField = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((value) => value === '' || isHttpsUrl(value), {
+    message: 'Debe ser una URL HTTPS valida',
+  })
+  .optional()
+
+const optionalBrandingUrlField = z
+  .string()
+  .trim()
+  .max(500)
+  .refine((value) => value === '' || isHttpsUrl(value) || isManagedBrandingPath(value), {
+    message: 'Debe ser una URL HTTPS valida o una ruta /public/branding/',
+  })
+  .optional()
+
 const settingsSchema = z.object({
   whatsapp_number: z.string().min(7).max(20).regex(/^\+?\d[\d\s\-().]+$/).optional(),
   store_name: z.string().min(1).max(100).optional(),
   whatsapp_header: z.string().max(200).optional(),
   whatsapp_template: z.string().max(4000).optional(),
   order_expiry_minutes: z.enum(['10', '20', '30', '60', '120', '240', '1440']).optional(),
-  brand_logo_url: z.string().max(500).optional(),
-  social_facebook_url: z.string().max(500).optional(),
-  social_tiktok_url: z.string().max(500).optional(),
-  social_instagram_url: z.string().max(500).optional(),
+  brand_logo_url: optionalBrandingUrlField,
+  social_facebook_url: optionalHttpsUrlField,
+  social_tiktok_url: optionalHttpsUrlField,
+  social_instagram_url: optionalHttpsUrlField,
   store_banner_title: z.string().min(1).max(120).optional(),
   store_banner_text: z.string().max(240).optional(),
-  store_banner_image_url: z.string().max(500).optional(),
-  store_banner_video_url: z.string().max(500).optional(),
+  store_banner_image_url: optionalBrandingUrlField,
+  store_banner_video_url: optionalBrandingUrlField,
   store_banner_media_type: z.enum(['image', 'video']).optional(),
   admin_banner_title: z.string().min(1).max(120).optional(),
   admin_banner_text: z.string().max(240).optional(),
-  admin_banner_image_url: z.string().max(500).optional(),
+  admin_banner_image_url: optionalBrandingUrlField,
 })
 
 adminSettingsRouter.get('/', async (c) => {
@@ -256,6 +288,10 @@ adminSettingsRouter.post('/assets/:assetType', rateLimitMiddleware(RATE_LIMITS.b
   }
   if (body.byteLength > config.maxBytes) {
     return c.json({ success: false, error: 'El archivo supera el tamano permitido' }, 422)
+  }
+
+  if (!matchesAnyContentType(body, config.allowedMimes)) {
+    return c.json({ success: false, error: 'El contenido real del archivo no coincide con el formato permitido' }, 422)
   }
 
   const ext = MIME_EXTENSIONS[contentType]

@@ -25,7 +25,7 @@ export const VALID_STATUS_TRANSITIONS: Record<ProductStatus, ProductStatus[]> = 
   active: ['hidden', 'reserved', 'sold'],
   hidden: ['active', 'reserved', 'sold'],
   reserved: ['active', 'sold'],
-  sold: [],
+  sold: ['active', 'hidden'],
 }
 
 // Transiciones de estado válidas para órdenes

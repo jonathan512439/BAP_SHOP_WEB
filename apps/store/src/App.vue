@@ -5,10 +5,12 @@ import CartDrawer from './components/CartDrawer.vue'
 import { useCartStore } from './stores/cart'
 import { useBrandingStore } from './stores/branding'
 import { absoluteUrl, setFavicon, setStructuredData } from './lib/seo'
+import { useConnectivity } from './composables/useConnectivity'
 const cartStore = useCartStore()
 const brandingStore = useBrandingStore()
 const isCartOpen = ref(false)
 const route = useRoute()
+const { isOnline } = useConnectivity()
 
 onMounted(() => {
   brandingStore.loadBranding()
@@ -80,8 +82,11 @@ watch(
 </script>
 
 <template>
-  <div class="app-layout">
+  <div class="app-layout" :class="{ offline: !isOnline }">
     <a href="#main-content" class="skip-link">Ir al contenido principal</a>
+    <div v-if="!isOnline" class="connection-banner" role="alert">
+      Sin conexion a internet. Puedes revisar la pagina cargada, pero no podras enviar pedidos hasta reconectar.
+    </div>
 
     <header class="glass-header" :class="{ 'with-banner': !!bannerImageUrl || !!bannerVideoUrl }">
       <div
@@ -227,6 +232,18 @@ watch(
   top: 1rem;
 }
 
+.connection-banner {
+  position: sticky;
+  top: 0;
+  z-index: 80;
+  padding: 0.75rem 1rem;
+  text-align: center;
+  background: #7f1d1d;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
 .glass-header {
   position: sticky;
   top: 0;
@@ -236,6 +253,10 @@ watch(
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-light);
   transition: all 0.3s ease;
+}
+
+.app-layout.offline .glass-header {
+  top: 2.75rem;
 }
 
 .glass-header.with-banner {

@@ -11,6 +11,8 @@
     "verify-password": "node ./scripts/verify-password.mjs",
     "migrate:image-variants": "node ./scripts/migrate-product-image-variants.mjs",
     "backup:d1": "node ./scripts/backup-d1-to-r2.mjs",
+    "ops:health": "node ./scripts/ops-health-check.mjs",
+    "ops:repair": "node ./scripts/ops-repair.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

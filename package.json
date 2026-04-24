@@ -19,6 +19,8 @@
     "test:store": "pnpm --filter store test",
     "test": "pnpm test:worker && pnpm test:store && pnpm test:admin",
     "validate": "pnpm typecheck && pnpm test",
+    "perf:report": "node ./scripts/performance-report.mjs",
+    "perf:report:strict": "node ./scripts/performance-report.mjs --strict",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -30,6 +32,6 @@
     "prettier": "^3.3.0",
     "sharp": "^0.34.5",
     "typescript": "^5.5.0",
-    "wrangler": "^4.77.0"
+    "wrangler": "^4.84.1"
   }
 }

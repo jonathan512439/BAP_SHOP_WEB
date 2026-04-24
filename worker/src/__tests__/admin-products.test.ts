@@ -16,6 +16,7 @@ describe('Admin products routes', () => {
     soldProduct: '50505050-5050-4050-8050-505050505050',
     pendingDeleteProduct: '60606060-6060-4060-8060-606060606060',
     confirmedDeleteProduct: '70707070-7070-4070-8070-707070707070',
+    imageOpsProduct: '80808080-8080-4080-8080-808080808080',
   }
 
   let sessionToken = ''
@@ -66,7 +67,8 @@ describe('Admin products routes', () => {
         (?, 'other', 'active', 'Eliminable', NULL, NULL, 'Eliminar', 15000, 'good', NULL, NULL, ?, ?),
         (?, 'sneaker', 'sold', 'Vendido reactivable', ?, '45', 'Vendido antes', 52000, 'like_new', NULL, NULL, ?, ?),
         (?, 'other', 'active', 'Pendiente bloqueo delete', NULL, NULL, 'Pendiente', 17000, 'good', NULL, NULL, ?, ?),
-        (?, 'other', 'sold', 'Confirmado eliminable', NULL, NULL, 'Confirmado', 19000, 'good', NULL, NULL, ?, ?)`
+        (?, 'other', 'sold', 'Confirmado eliminable', NULL, NULL, 'Confirmado', 19000, 'good', NULL, NULL, ?, ?),
+        (?, 'other', 'active', 'Imagenes operativas', NULL, NULL, 'Orden visual', 21000, 'good', NULL, NULL, ?, ?)`
     ).bind(
       ids.draftProduct,
       ids.model,
@@ -93,6 +95,9 @@ describe('Admin products routes', () => {
       now,
       ids.confirmedDeleteProduct,
       now,
+      now,
+      ids.imageOpsProduct,
+      now,
       now
     ).run()
 
@@ -110,6 +115,13 @@ describe('Admin products routes', () => {
       `INSERT INTO product_images (id, product_id, r2_key, is_primary, sort_order, created_at)
        VALUES ('img-sold', ?, 'public/products/prod-sold/primary.webp', 1, 0, ?)`
     ).bind(ids.soldProduct, now).run()
+
+    await env.DB.prepare(
+      `INSERT INTO product_images (id, product_id, r2_key, thumb_r2_key, card_r2_key, detail_r2_key, full_r2_key, is_primary, sort_order, created_at)
+       VALUES
+        ('img-ops-a', ?, 'public/products/img-ops-a/full.webp', 'public/products/img-ops-a/thumb.webp', 'public/products/img-ops-a/card.webp', 'public/products/img-ops-a/detail.webp', 'public/products/img-ops-a/full.webp', 1, 0, ?),
+        ('img-ops-b', ?, 'public/products/img-ops-b/full.webp', 'public/products/img-ops-b/thumb.webp', 'public/products/img-ops-b/card.webp', 'public/products/img-ops-b/detail.webp', 'public/products/img-ops-b/full.webp', 0, 1, ?)`
+    ).bind(ids.imageOpsProduct, now, ids.imageOpsProduct, now).run()
 
     await env.DB.prepare(
       `INSERT INTO orders
@@ -230,7 +242,7 @@ describe('Admin products routes', () => {
     })
   })
 
-  it('rechaza reactivar un producto vendido por ser un estado terminal', async () => {
+  it('permite reactivar un producto vendido', async () => {
     const response = await adminRequest(`/admin/products/${ids.soldProduct}/status`, {
       method: 'PATCH',
       headers: {
@@ -239,15 +251,15 @@ describe('Admin products routes', () => {
       body: JSON.stringify({ status: 'active' }),
     })
 
-    const payload = await response.json<{ success: boolean; error: string }>()
+    const payload = await response.json<{ success: boolean; data?: { status: string } }>()
     const product = await env.DB.prepare('SELECT status FROM products WHERE id = ?')
       .bind(ids.soldProduct)
       .first<{ status: string }>()
 
-    expect(response.status).toBe(409)
-    expect(payload.success).toBe(false)
-    expect(payload.error).toContain('No puedes cambiar')
-    expect(product?.status).toBe('sold')
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.status).toBe('active')
+    expect(product?.status).toBe('active')
   })
 
   it('elimina un producto sin pedidos abiertos y borra sus imagenes asociadas', async () => {
@@ -293,5 +305,50 @@ describe('Admin products routes', () => {
     expect(payload.success).toBe(true)
     expect(payload.data?.id).toBe(ids.confirmedDeleteProduct)
     expect(product).toBeNull()
+  })
+
+  it('rechaza subidas directas de imagenes sin variantes optimizadas', async () => {
+    const response = await adminRequest(`/admin/products/${ids.imageOpsProduct}/images`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'image/png',
+      },
+      body: new Uint8Array([1, 2, 3]),
+    })
+
+    const payload = await response.json<{ success: boolean; error: string }>()
+
+    expect(response.status).toBe(422)
+    expect(payload.success).toBe(false)
+    expect(payload.error).toContain('variantes optimizadas')
+  })
+
+  it('registra auditoria al cambiar orden e imagen principal', async () => {
+    const sortResponse = await adminRequest(`/admin/products/${ids.imageOpsProduct}/sort`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sort_order: 7 }),
+    })
+    const primaryResponse = await adminRequest(`/admin/products/${ids.imageOpsProduct}/images/img-ops-b/primary`, {
+      method: 'PATCH',
+    })
+
+    const auditRows = await env.DB.prepare(
+      `SELECT action
+       FROM audit_log
+       WHERE entity_id IN (?, ?)
+       ORDER BY created_at DESC`
+    ).bind(ids.imageOpsProduct, 'img-ops-b').all<{ action: string }>()
+    const primary = await env.DB.prepare('SELECT is_primary FROM product_images WHERE id = ?')
+      .bind('img-ops-b')
+      .first<{ is_primary: number }>()
+
+    expect(sortResponse.status).toBe(200)
+    expect(primaryResponse.status).toBe(200)
+    expect(primary?.is_primary).toBe(1)
+    expect(auditRows.results.map((row) => row.action)).toContain('product.sort')
+    expect(auditRows.results.map((row) => row.action)).toContain('image.primary')
   })
 })

@@ -23,6 +23,13 @@ export const RATE_LIMITS = {
     mode: 'errors-only',
     identity: 'ip',
   },
+  authSession: {
+    keyPrefix: 'rl:auth-session',
+    maxAttempts: 240,
+    windowSec: 60,
+    mode: 'all',
+    identity: 'admin-or-ip',
+  },
   publicOrders: {
     keyPrefix: 'rl:orders',
     maxAttempts: 10,
@@ -57,6 +64,13 @@ export const RATE_LIMITS = {
     windowSec: 5 * 60,
     mode: 'all',
     identity: 'admin-or-ip',
+  },
+  health: {
+    keyPrefix: 'rl:health',
+    maxAttempts: 240,
+    windowSec: 60,
+    mode: 'all',
+    identity: 'ip',
   },
 } satisfies Record<string, RateLimitConfig>
 

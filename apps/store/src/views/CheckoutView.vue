@@ -6,6 +6,7 @@ import BaseInput from '../components/BaseInput.vue'
 import BaseModal from '../components/BaseModal.vue'
 import { useCartStore } from '../stores/cart'
 import { useOrder } from '../composables/useOrder'
+import { useConnectivity } from '../composables/useConnectivity'
 
 declare global {
   interface Window {
@@ -27,6 +28,7 @@ declare global {
 
 const router = useRouter()
 const cartStore = useCartStore()
+const { isOnline } = useConnectivity()
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY || '1x00000000000000000000AA'
@@ -130,6 +132,15 @@ function validateForm() {
 
 async function handleSubmitOrder() {
   resetFeedback()
+
+  if (orderSubmitting.value) {
+    return
+  }
+
+  if (!isOnline.value) {
+    errors.value.submit = 'No tienes conexion a internet. Vuelve a intentar cuando recuperes la conexion.'
+    return
+  }
 
   if (!validateForm()) {
     return
@@ -300,9 +311,12 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
             {{ errors.submit }}
           </div>
 
-          <button type="submit" class="btn-primary block-button" :disabled="orderSubmitting || !turnstileToken">
+          <button type="submit" class="btn-primary block-button" :disabled="orderSubmitting || !turnstileToken || !isOnline">
             {{ orderSubmitting ? 'Enviando solicitud...' : 'Enviar solicitud' }}
           </button>
+          <p v-if="!isOnline" class="offline-note" role="status">
+            Recupera la conexion para poder enviar la solicitud por WhatsApp.
+          </p>
         </form>
       </section>
     </div>
@@ -550,6 +564,13 @@ function reasonLabel(reason: InvalidCartItem['reason']) {
 
 .block-button {
   width: 100%;
+}
+
+.offline-note {
+  margin: -0.35rem 0 0;
+  color: #fca5a5;
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
 .modal-copy {
