@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { markCatalogDirty } from '../../lib/catalog-dirty'
+import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
+import { logError, serializeError } from '../../lib/logger'
+import { upsertSetting } from '../../lib/settings'
 import { nowISO } from '@bap-shop/shared'
 
 export const adminPromotionsRouter = new Hono<HonoEnv>()
@@ -58,6 +62,10 @@ adminPromotionsRouter.put('/:productId', rateLimitMiddleware(RATE_LIMITS.adminMu
     existing ?? null, { discount_pct, starts_at, ends_at, enabled })
 
   await markCatalogDirty(c.env.DB)
+  await refreshCatalogAfterPromotionMutation(c, {
+    event: 'promotion.upsert',
+    productId,
+  })
 
   return c.json({ success: true, data: { productId, discount_pct, starts_at, ends_at, enabled } })
 })
@@ -76,6 +84,28 @@ adminPromotionsRouter.patch('/:productId/disable', rateLimitMiddleware(RATE_LIMI
 
   await logAction(c.env.DB, c.get('adminId'), 'promotion.disable', 'promotion', productId, promo, { enabled: false })
   await markCatalogDirty(c.env.DB)
+  await refreshCatalogAfterPromotionMutation(c, {
+    event: 'promotion.disable',
+    productId,
+  })
 
   return c.json({ success: true })
 })
+
+async function refreshCatalogAfterPromotionMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; productId: string }
+) {
+  try {
+    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await upsertSetting(c.env.DB, 'catalog_dirty', '0')
+  } catch (error) {
+    // Se mantiene catalog_dirty=1 para que cron/fallback lo recupere.
+    logError('catalog_rebuild_after_promotion_change_failed', {
+      requestId: c.get('requestId'),
+      event: context.event,
+      productId: context.productId,
+      error: serializeError(error, c.env.ENVIRONMENT !== 'production'),
+    })
+  }
+}
