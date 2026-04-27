@@ -40,6 +40,10 @@ function clearSessionCookies(c: Context<HonoEnv, any>) {
 
 type AuthDebugDetails = Record<string, string | number | boolean | null>
 
+function includeAuthDebug(c: Context<HonoEnv>) {
+  return c.env.ENVIRONMENT === 'development'
+}
+
 function authError(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   c: Context<HonoEnv, any>,
@@ -48,18 +52,19 @@ function authError(
   debugCode: string,
   debugDetails: AuthDebugDetails = {},
 ) {
+  const shouldIncludeDebug = includeAuthDebug(c)
   const payload: {
     success: false
     error: string
     debug?: { code: string } & AuthDebugDetails
   } = { success: false, error }
 
-  if (c.env.ENVIRONMENT !== 'production') {
+  if (shouldIncludeDebug) {
     payload.debug = { code: debugCode, ...debugDetails }
   }
 
   const response = c.json(payload, status)
-  if (c.env.ENVIRONMENT !== 'production') {
+  if (shouldIncludeDebug) {
     response.headers.set('x-auth-debug-code', debugCode)
   }
   return response

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { applyDiscount, formatPrice } from '@bap-shop/shared'
 import { apiClient } from '../api/client'
 import BaseConfirmModal from '../components/BaseConfirmModal.vue'
@@ -36,6 +36,8 @@ const promos = ref<PromotionRow[]>([])
 const isLoading = ref(true)
 const isSaving = ref(false)
 const isConfirmingDisable = ref(false)
+const nowMs = ref(Date.now())
+let nowInterval: ReturnType<typeof setInterval> | null = null
 const editingProductId = ref<string | null>(null)
 const productIdPendingDisable = ref<string | null>(null)
 const feedback = ref('')
@@ -52,23 +54,27 @@ const form = ref({
   discountPct: 15,
   startsAt: '',
   endsAt: '',
-  durationPreset: '10080',
   enabled: true,
 })
 
-const DURATION_OPTIONS = [
-  { value: '60', label: '1 hora' },
-  { value: '120', label: '2 horas' },
-  { value: '360', label: '6 horas' },
-  { value: '720', label: '12 horas' },
-  { value: '1440', label: '24 horas' },
-  { value: '2880', label: '2 dias' },
-  { value: '7200', label: '5 dias' },
-  { value: '10080', label: '1 semana' },
-  { value: 'custom', label: 'Personalizado' },
-]
-
 const promoMap = computed(() => new Map(promos.value.map((promo) => [promo.product_id, promo])))
+
+const getPromotionStatus = (promotion?: PromotionRow | null) => {
+  if (!promotion) return 'without_promo'
+  if (promotion.enabled !== 1) return 'inactive'
+
+  const startsAt = Date.parse(promotion.starts_at)
+  const endsAt = Date.parse(promotion.ends_at)
+
+  if (!Number.isFinite(startsAt) || !Number.isFinite(endsAt)) return 'inactive'
+  if (startsAt > nowMs.value) return 'scheduled'
+  if (endsAt <= nowMs.value) return 'expired'
+  return 'active'
+}
+
+const isPromotionEnabled = (promotion?: PromotionRow | null) => {
+  return !!promotion && promotion.enabled === 1
+}
 
 const rows = computed<PromotionTableRow[]>(() => {
   const normalizedSearch = filters.value.search.trim().toLowerCase()
@@ -88,8 +94,11 @@ const rows = computed<PromotionTableRow[]>(() => {
 
       if (filters.value.status === 'with_promo' && !row.promotion) return false
       if (filters.value.status === 'without_promo' && row.promotion) return false
-      if (filters.value.status === 'active' && row.promotion?.enabled !== 1) return false
-      if (filters.value.status === 'inactive' && (!row.promotion || row.promotion.enabled === 1)) return false
+      const promotionStatus = getPromotionStatus(row.promotion)
+      if (filters.value.status === 'active' && promotionStatus !== 'active') return false
+      if (filters.value.status === 'scheduled' && promotionStatus !== 'scheduled') return false
+      if (filters.value.status === 'expired' && promotionStatus !== 'expired') return false
+      if (filters.value.status === 'inactive' && promotionStatus !== 'inactive') return false
 
       return true
     })
@@ -112,45 +121,51 @@ const previewPrice = computed(() => {
   return applyDiscount(editingRow.value.price, form.value.discountPct)
 })
 
+const pad2 = (value: number) => String(value).padStart(2, '0')
+
+const formatLocalInputValue = (date: Date) => {
+  return [
+    date.getFullYear(),
+    pad2(date.getMonth() + 1),
+    pad2(date.getDate()),
+  ].join('-') + `T${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
+const parseLocalDateTime = (value: string) => {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/)
+  if (!match) return null
+
+  const [, year, month, day, hour, minute] = match
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0
+  )
+
+  if (Number.isNaN(date.getTime())) return null
+  return date
+}
+
 const toLocalInputValue = (iso?: string | null) => {
   if (!iso) return ''
   const date = new Date(iso)
-  const offset = date.getTimezoneOffset()
-  const localDate = new Date(date.getTime() - offset * 60_000)
-  return localDate.toISOString().slice(0, 16)
+  if (Number.isNaN(date.getTime())) return ''
+  return formatLocalInputValue(date)
 }
 
-const toIsoDate = (value: string) => new Date(value).toISOString()
-
 const addMinutesToLocalValue = (value: string, minutes: number) => {
-  const date = new Date(value)
+  const date = parseLocalDateTime(value)
+  if (!date) return value
   date.setMinutes(date.getMinutes() + minutes)
-  return toLocalInputValue(date.toISOString())
+  return formatLocalInputValue(date)
 }
 
 const createDefaultEndDate = () => {
   return addMinutesToLocalValue(toLocalInputValue(new Date().toISOString()), 10080)
-}
-
-const getDurationPresetForRange = (startsAt: string, endsAt: string) => {
-  if (!startsAt || !endsAt) return '10080'
-
-  const start = new Date(startsAt)
-  const end = new Date(endsAt)
-  const diffMinutes = Math.round((end.getTime() - start.getTime()) / 60_000)
-  const matchingPreset = DURATION_OPTIONS.find((option) => option.value !== 'custom' && Number(option.value) === diffMinutes)
-  return matchingPreset?.value ?? 'custom'
-}
-
-const applyDurationPreset = (presetValue: string) => {
-  form.value.durationPreset = presetValue
-  if (presetValue === 'custom' || !form.value.startsAt) return
-
-  form.value.endsAt = addMinutesToLocalValue(form.value.startsAt, Number(presetValue))
-}
-
-const onDurationPresetChange = (event: Event) => {
-  applyDurationPreset((event.target as HTMLSelectElement).value)
 }
 
 const formatDate = (iso?: string | null) => {
@@ -169,13 +184,11 @@ const fetchData = async () => {
 
   try {
     const [productsRes, promosRes] = await Promise.all([
-      apiClient<{ data: ProductRow[] }>('/admin/products', {
-        params: { status: 'active', page: 1, limit: 100 },
-      }),
+      fetchAllActiveProducts(),
       apiClient<{ data: PromotionRow[] }>('/admin/promotions'),
     ])
 
-    products.value = productsRes.data
+    products.value = productsRes
     promos.value = promosRes.data
   } catch (error: any) {
     actionErrorTitle.value = 'No se pudieron cargar las promociones'
@@ -183,6 +196,28 @@ const fetchData = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+const fetchAllActiveProducts = async () => {
+  const limit = 50
+  let page = 1
+  let totalPages = 1
+  const loadedProducts: ProductRow[] = []
+
+  do {
+    const response = await apiClient<{
+      data: ProductRow[]
+      meta?: { totalPages?: number }
+    }>('/admin/products', {
+      params: { status: 'active', page, limit },
+    })
+
+    loadedProducts.push(...response.data)
+    totalPages = Math.max(1, response.meta?.totalPages ?? 1)
+    page += 1
+  } while (page <= totalPages)
+
+  return loadedProducts
 }
 
 const reloadPromotions = async () => {
@@ -196,7 +231,6 @@ const openEditor = (row: PromotionTableRow) => {
     form.value.discountPct = row.promotion.discount_pct
     form.value.startsAt = toLocalInputValue(row.promotion.starts_at)
     form.value.endsAt = toLocalInputValue(row.promotion.ends_at)
-    form.value.durationPreset = getDurationPresetForRange(form.value.startsAt, form.value.endsAt)
     form.value.enabled = row.promotion.enabled === 1
     return
   }
@@ -204,7 +238,6 @@ const openEditor = (row: PromotionTableRow) => {
   form.value.discountPct = 15
   form.value.startsAt = toLocalInputValue(new Date().toISOString())
   form.value.endsAt = createDefaultEndDate()
-  form.value.durationPreset = '10080'
   form.value.enabled = true
 }
 
@@ -229,6 +262,21 @@ const savePromotion = async () => {
     return
   }
 
+  const startsAtDate = parseLocalDateTime(form.value.startsAt)
+  const endsAtDate = parseLocalDateTime(form.value.endsAt)
+
+  if (!startsAtDate || !endsAtDate) {
+    actionErrorTitle.value = 'Fechas invalidas'
+    actionErrorMessage.value = 'Verifica el formato de inicio y fin de la promocion.'
+    return
+  }
+
+  if (endsAtDate.getTime() <= startsAtDate.getTime()) {
+    actionErrorTitle.value = 'Rango invalido'
+    actionErrorMessage.value = 'La fecha de fin debe ser posterior a la de inicio.'
+    return
+  }
+
   isSaving.value = true
   feedback.value = ''
 
@@ -237,8 +285,8 @@ const savePromotion = async () => {
       method: 'PUT',
       body: {
         discount_pct: form.value.discountPct,
-        starts_at: toIsoDate(form.value.startsAt),
-        ends_at: toIsoDate(form.value.endsAt),
+        starts_at: startsAtDate.toISOString(),
+        ends_at: endsAtDate.toISOString(),
         enabled: form.value.enabled,
       },
     })
@@ -280,25 +328,17 @@ const goToPage = (page: number) => {
 
 onMounted(() => {
   fetchData()
+  nowInterval = setInterval(() => {
+    nowMs.value = Date.now()
+  }, 30000)
 })
 
-watch(
-  () => form.value.startsAt,
-  (value, oldValue) => {
-    if (!value || !oldValue) return
-    if (form.value.durationPreset === 'custom') return
-
-    form.value.endsAt = addMinutesToLocalValue(value, Number(form.value.durationPreset))
+onUnmounted(() => {
+  if (nowInterval) {
+    clearInterval(nowInterval)
+    nowInterval = null
   }
-)
-
-watch(
-  () => form.value.endsAt,
-  (value) => {
-    if (!value || !form.value.startsAt) return
-    form.value.durationPreset = getDurationPresetForRange(form.value.startsAt, value)
-  }
-)
+})
 
 watch(
   () => [filters.value.search, filters.value.status],
@@ -341,6 +381,8 @@ watch(rows, () => {
           <option value="with_promo">Con promo</option>
           <option value="without_promo">Sin promo</option>
           <option value="active">Activa</option>
+          <option value="scheduled">Programada</option>
+          <option value="expired">Expirada</option>
           <option value="inactive">Inactiva</option>
         </select>
       </label>
@@ -397,7 +439,7 @@ watch(rows, () => {
         </td>
         <td>
           <StatusBadge
-            :status="row.promotion ? (row.promotion.enabled === 1 ? 'active' : 'inactive') : 'without_promo'"
+            :status="getPromotionStatus(row.promotion)"
             kind="generic"
           />
         </td>
@@ -406,7 +448,7 @@ watch(rows, () => {
             {{ row.promotion ? 'Editar' : 'Agregar' }}
           </button>
           <button
-            v-if="row.promotion?.enabled === 1"
+            v-if="isPromotionEnabled(row.promotion)"
             type="button"
             class="btn btn-sm btn-danger"
             @click="requestDisablePromo(row.id)"
@@ -447,18 +489,6 @@ watch(rows, () => {
           <FormField label="Inicio" help="Fecha y hora desde la cual la promo queda vigente.">
             <input v-model="form.startsAt" type="datetime-local" />
           </FormField>
-
-          <FormSelect label="Duracion rapida" help="Atajo para fijar el vencimiento automaticamente desde la fecha de inicio.">
-            <select
-              :value="form.durationPreset"
-              class="form-select"
-              @change="onDurationPresetChange"
-            >
-              <option v-for="option in DURATION_OPTIONS" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </FormSelect>
 
           <FormField label="Fin" help="Cuando expire, el cron puede deshabilitarla automaticamente.">
             <input v-model="form.endsAt" type="datetime-local" />
@@ -667,6 +697,7 @@ watch(rows, () => {
 .form-grid {
   display: grid;
   gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .form-grid :deep(input[type='number']),
@@ -699,6 +730,18 @@ watch(rows, () => {
   .thumb {
     width: 56px;
     height: 56px;
+  }
+
+  .product-cell {
+    align-items: flex-start;
+  }
+
+  .product-cell .text-secondary {
+    word-break: break-all;
+  }
+
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .actions {

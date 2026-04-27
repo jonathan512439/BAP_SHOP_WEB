@@ -6,6 +6,7 @@ node_modules/
 dist/
 .output/
 .vite/
+*.tsbuildinfo
 
 # Cloudflare Wrangler
 .wrangler/

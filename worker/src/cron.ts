@@ -4,6 +4,8 @@ import { rebuildCatalogSnapshots } from './lib/catalog-builder'
 import { loadSettingsByKeys, upsertSetting } from './lib/settings'
 import { createDatabaseBackup } from './lib/backups'
 import { logInfo, logWarn } from './lib/logger'
+import { expirePendingOrdersAndReleaseProducts } from './lib/order-expiry'
+import { expireEndedPromotions } from './lib/promotion-expiry'
 import { enableForeignKeys } from './middleware'
 
 /**
@@ -42,70 +44,44 @@ export async function handleScheduled(
  * Caduca pedidos pendientes y libera productos reservados.
  */
 async function expireOrders(env: Env, now: string): Promise<void> {
-  // 1. Obtener pedidos que expiran
-  const expiredOrders = await env.DB.prepare(
-    `SELECT id FROM orders WHERE status = 'pending' AND expires_at <= ?`
-  ).bind(now).all<{ id: string }>()
-
-  if (!expiredOrders.results || expiredOrders.results.length === 0) {
+  const result = await expirePendingOrdersAndReleaseProducts(env.DB, now)
+  if (result.expiredOrders === 0 && result.releasedProducts === 0) {
     return
   }
 
-  const orderIds = expiredOrders.results.map((o) => o.id)
-  const placeholders = orderIds.map(() => '?').join(', ')
-
-  const statements: D1PreparedStatement[] = []
-
-  // 2. Marcar pedidos como expirados
-  statements.push(
-    env.DB.prepare(
-      `UPDATE orders SET status = 'expired', updated_at = ? WHERE id IN (${placeholders})`
-    ).bind(now, ...orderIds)
-  )
-
-  // 3. Liberar productos reservados por estos pedidos
-  statements.push(
-    env.DB.prepare(
-      `UPDATE products
-       SET status = 'active', reserved_order_id = NULL, reserved_until = NULL, updated_at = ?
-       WHERE reserved_order_id IN (${placeholders})`
-    ).bind(now, ...orderIds)
-  )
-
-  await env.DB.batch(statements)
-  
-  // 4. Reconstruir catálogo ya que hay artículos nuevos disponibles
+  // Reconstruir catalogo ya que hay articulos nuevos disponibles
   await rebuildCatalogSnapshots(env.DB, env.R2, env.R2_PUBLIC_DOMAIN)
-  logInfo('cron_orders_expired', { count: orderIds.length })
+  logInfo('cron_orders_expired', {
+    expiredOrders: result.expiredOrders,
+    releasedProducts: result.releasedProducts,
+  })
 }
 
 /**
- * Deshabilita promociones vencidas
+ * Deshabilita promociones vencidas.
  */
 async function expirePromotions(env: Env, now: string): Promise<void> {
-  const result = await env.DB.prepare(
-    `UPDATE product_promotions SET enabled = 0, updated_at = ? WHERE enabled = 1 AND ends_at <= ?`
-  ).bind(now, now).run()
-
-  if (result.meta?.changes && result.meta.changes > 0) {
+  const changes = await expireEndedPromotions(env.DB, now)
+  if (changes > 0) {
     await rebuildCatalogSnapshots(env.DB, env.R2, env.R2_PUBLIC_DOMAIN)
-    logInfo('cron_promotions_expired', { count: result.meta.changes })
+    logInfo('cron_promotions_expired', { count: changes })
   }
 }
 
 /**
- * Limpia sesiones expiradas de admin_sessions (Daily Housekeeping)
+ * Limpia sesiones expiradas de admin_sessions (Daily Housekeeping).
  */
 async function cleanupSessions(env: Env, now: string): Promise<void> {
-  const result = await env.DB.prepare(
-    `DELETE FROM admin_sessions WHERE expires_at <= ?`
-  ).bind(now).run()
+  const result = await env.DB
+    .prepare(`DELETE FROM admin_sessions WHERE expires_at <= ?`)
+    .bind(now)
+    .run()
   logInfo('cron_sessions_cleaned', { count: result.meta?.changes ?? 0 })
 }
 
 /**
- * Rebuild diferido del catálogo: solo ejecuta si el flag catalog_dirty está en '1'.
- * Después del rebuild, limpia JSONs huérfanos en R2 (productos ocultos/eliminados).
+ * Rebuild diferido del catalogo: solo ejecuta si catalog_dirty esta en '1'.
+ * Despues del rebuild, limpia JSONs huerfanos en R2 (productos ocultos/eliminados).
  */
 async function rebuildIfDirty(env: Env): Promise<void> {
   const settings = await loadSettingsByKeys(env.DB, ['catalog_dirty'])
@@ -117,10 +93,10 @@ async function rebuildIfDirty(env: Env): Promise<void> {
   // Limpiar flag
   await upsertSetting(env.DB, 'catalog_dirty', '0')
 
-  // Limpiar JSONs huérfanos: obtener IDs visibles y comparar con R2
-  const visibleIds = await env.DB.prepare(
-    `SELECT id FROM products WHERE status IN ('active', 'reserved', 'sold')`
-  ).all<{ id: string }>()
+  // Limpiar JSONs huerfanos: obtener IDs visibles y comparar con R2
+  const visibleIds = await env.DB
+    .prepare(`SELECT id FROM products WHERE status IN ('active', 'reserved', 'sold')`)
+    .all<{ id: string }>()
   const validIds = new Set(visibleIds.results.map((r) => r.id))
 
   // Listar objetos en public/products/
@@ -135,7 +111,6 @@ async function rebuildIfDirty(env: Env): Promise<void> {
   }
 
   if (deleteKeys.length > 0) {
-    // R2 delete soporta hasta 1000 keys por llamada
     await Promise.all(deleteKeys.map((key) => env.R2.delete(key)))
     logInfo('cron_orphan_product_snapshots_deleted', { count: deleteKeys.length })
   }
@@ -144,8 +119,7 @@ async function rebuildIfDirty(env: Env): Promise<void> {
 }
 
 /**
- * Backup semanal hacia R2 (Mecánica simple con D1 Dump - Requiere soporte WorkerD1/REST API en prod, 
- * por ahora lo dejamos como stub funcional)
+ * Backup semanal hacia R2.
  */
 async function backupDatabase(env: Env): Promise<void> {
   const result = await createDatabaseBackup(env.DB, env.R2, {
@@ -160,5 +134,3 @@ async function backupDatabase(env: Env): Promise<void> {
     logInfo('cron_d1_backups_pruned', { count: result.deletedBackups.length })
   }
 }
-
-// Allowlist de tablas permitidas para backup — previene SQL injection

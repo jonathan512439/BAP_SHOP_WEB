@@ -19,7 +19,18 @@ const isLoading = ref(true)
 const error = ref<string | null>(null)
 const product = ref<CatalogProductDetail | null>(null)
 
-const finalPrice = computed(() => product.value?.promo_price ?? product.value?.price ?? 0)
+const hasActivePromo = computed(() => {
+  if (!product.value?.promo_price || !product.value?.discount_pct) return false
+  if (!product.value.promo_ends_at) return true
+
+  const endsAt = Date.parse(product.value.promo_ends_at)
+  if (Number.isNaN(endsAt)) return true
+  return endsAt > Date.now()
+})
+
+const effectivePromoPrice = computed(() => (hasActivePromo.value ? product.value?.promo_price ?? null : null))
+const effectiveDiscountPct = computed(() => (hasActivePromo.value ? product.value?.discount_pct ?? null : null))
+const finalPrice = computed(() => effectivePromoPrice.value ?? product.value?.price ?? 0)
 const isSold = computed(() => product.value?.status === PRODUCT_STATUS.SOLD)
 const isReserved = computed(() => product.value?.status === PRODUCT_STATUS.RESERVED)
 const isUnavailable = computed(() => isSold.value || isReserved.value)
@@ -60,7 +71,7 @@ watch(
     })
 
     const productUrl = absoluteUrl(route.path)
-    const offerPrice = currentProduct.promo_price ?? currentProduct.price
+    const offerPrice = effectivePromoPrice.value ?? currentProduct.price
 
     setStructuredData('product', {
       '@context': 'https://schema.org',
@@ -167,8 +178,8 @@ const addToCart = () => {
     model: product.value.model,
     size: product.value.size,
     price: product.value.price,
-    promo_price: product.value.promo_price,
-    discount_pct: product.value.discount_pct,
+    promo_price: effectivePromoPrice.value,
+    discount_pct: effectiveDiscountPct.value,
     physical_condition: product.value.physical_condition,
     primary_image_url:
       product.value.images.find((image) => image.is_primary)?.url ?? product.value.images[0]?.url ?? null,
@@ -210,7 +221,7 @@ const addToCart = () => {
       <p v-if="product.size" class="meta">Talla: {{ product.size }}</p>
 
       <div class="prices">
-        <span v-if="product.promo_price" class="original-price">{{ formatPrice(product.price) }}</span>
+        <span v-if="effectivePromoPrice !== null" class="original-price">{{ formatPrice(product.price) }}</span>
         <span class="final-price">{{ formatPrice(finalPrice) }}</span>
       </div>
 

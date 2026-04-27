@@ -87,6 +87,9 @@ describe('Admin promotions routes', () => {
   }
 
   it('crea o actualiza una promocion y registra auditoria', async () => {
+    const startsAt = new Date(Date.now() - 60_000).toISOString()
+    const endsAt = new Date(Date.now() + 60 * 60_000).toISOString()
+
     const response = await adminRequest(`/admin/promotions/${ids.product}`, {
       method: 'PUT',
       headers: {
@@ -94,8 +97,8 @@ describe('Admin promotions routes', () => {
       },
       body: JSON.stringify({
         discount_pct: 20,
-        starts_at: '2026-03-27T10:00:00.000Z',
-        ends_at: '2026-03-28T10:00:00.000Z',
+        starts_at: startsAt,
+        ends_at: endsAt,
         enabled: true,
       }),
     })
@@ -110,6 +113,14 @@ describe('Admin promotions routes', () => {
     const audit = await env.DB.prepare(
       "SELECT action, entity_id FROM audit_log WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1"
     ).bind(ids.product).first<{ action: string; entity_id: string }>()
+    const indexObject = await env.R2.get('public/catalog/index.json')
+    const index = await indexObject!.json<Array<{
+      id: string
+      promo_price: number | null
+      discount_pct: number | null
+      promo_ends_at: string | null
+    }>>()
+    const catalogProduct = index.find((product) => product.id === ids.product)
 
     expect(response.status).toBe(200)
     expect(payload.success).toBe(true)
@@ -125,6 +136,12 @@ describe('Admin promotions routes', () => {
     expect(audit).toMatchObject({
       action: 'promotion.upsert',
       entity_id: ids.product,
+    })
+    expect(catalogProduct).toMatchObject({
+      id: ids.product,
+      promo_price: 40000,
+      discount_pct: 20,
+      promo_ends_at: endsAt,
     })
   })
 

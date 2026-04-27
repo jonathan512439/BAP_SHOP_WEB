@@ -44,7 +44,7 @@ const BRANDING_UPLOADS = {
     settingKey: SETTINGS_KEYS.BRAND_LOGO_URL,
     folder: 'logo',
     maxBytes: 2 * 1024 * 1024,
-    allowedMimes: ['image/svg+xml', 'image/png', 'image/webp', 'image/jpeg'] as const,
+    allowedMimes: ['image/png', 'image/webp', 'image/jpeg'] as const,
   },
   'store-banner': {
     settingKey: SETTINGS_KEYS.STORE_BANNER_IMAGE_URL,
@@ -67,7 +67,6 @@ const BRANDING_UPLOADS = {
 } as const
 
 const MIME_EXTENSIONS: Record<string, string> = {
-  'image/svg+xml': 'svg',
   'image/png': 'png',
   'image/webp': 'webp',
   'image/jpeg': 'jpg',

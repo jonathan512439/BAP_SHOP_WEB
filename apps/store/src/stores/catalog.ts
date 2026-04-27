@@ -15,6 +15,34 @@ const STATUS_PRIORITY: Record<string, number> = {
   [PRODUCT_STATUS.DRAFT]: 4,
 }
 
+const isPromoExpired = (endsAt?: string | null): boolean => {
+  if (!endsAt) return false
+  const timestamp = Date.parse(endsAt)
+  if (Number.isNaN(timestamp)) return false
+  return timestamp <= Date.now()
+}
+
+const normalizePromotion = (product: CatalogCard): CatalogCard => {
+  if (!product.promo_price || !product.discount_pct) {
+    return product
+  }
+
+  if (!isPromoExpired(product.promo_ends_at)) {
+    return product
+  }
+
+  return {
+    ...product,
+    promo_price: null,
+    discount_pct: null,
+    promo_ends_at: null,
+  }
+}
+
+const normalizeCatalogProducts = (products: CatalogCard[]): CatalogCard[] => {
+  return products.map(normalizePromotion)
+}
+
 export const useCatalogStore = defineStore('catalog', () => {
   const isLoaded = ref(false)
   const isLoading = ref(false)
@@ -46,7 +74,7 @@ export const useCatalogStore = defineStore('catalog', () => {
         const localFilters = sessionStorage.getItem('bap_catalog_filters')
 
         if (localVersion === String(manifest.catalog_version) && localProducts && localFilters) {
-          products.value = JSON.parse(localProducts)
+          products.value = normalizeCatalogProducts(JSON.parse(localProducts) as CatalogCard[])
           filters.value = JSON.parse(localFilters)
           isLoaded.value = true
           return
@@ -61,7 +89,7 @@ export const useCatalogStore = defineStore('catalog', () => {
           throw new Error('Error al cargar el catalogo')
         }
 
-        const nextProducts = await productsResponse.json()
+        const nextProducts = normalizeCatalogProducts((await productsResponse.json()) as CatalogCard[])
         const nextFilters = await filtersResponse.json()
 
         products.value = nextProducts

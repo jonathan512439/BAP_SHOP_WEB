@@ -92,7 +92,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
       </div>
       
       <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isUnavailable }">
-        {{ product.discount_pct }}% DESCUENTO
+        {{ product.discount_pct }}% DESC
       </div>
       <div v-if="isUnavailable" class="badge unavailable" :class="{ reserved: isReserved }">
         {{ isReserved ? 'Reservado' : 'Vendido' }}
@@ -401,5 +401,77 @@ const onCardKeydown = (event: KeyboardEvent) => {
   color: #c6ddfb;
   border-color: rgba(21, 101, 192, 0.4);
   cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 0.75rem;
+  }
+
+  .meta {
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.72rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .name {
+    font-size: 0.9rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .product-id,
+  .product-promo-window {
+    display: none;
+  }
+
+  .price-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .original-price {
+    font-size: 0.75rem;
+  }
+
+  .final-price {
+    font-size: 1rem;
+  }
+
+  .btn-cart {
+    width: 100%;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.75rem;
+  }
+
+  .badge {
+    top: 0.45rem;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.62rem;
+  }
+
+  .badge.discount,
+  .badge.unavailable {
+    left: 0.45rem;
+  }
+
+  .badge.condition {
+    right: 0.45rem;
+    max-width: calc(100% - 0.9rem);
+  }
+
+  .badge.discount.stacked,
+  .badge.unavailable + .badge.condition,
+  .badge.discount + .badge.unavailable + .badge.condition {
+    top: 2.45rem;
+  }
+
+  .status-watermark {
+    bottom: 0.5rem;
+    min-width: 6.8rem;
+    padding: 0.32rem 0.55rem;
+    font-size: 0.64rem;
+  }
 }
 </style>

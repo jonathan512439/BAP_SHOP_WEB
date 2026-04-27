@@ -153,7 +153,7 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
     clearTimeout(timeoutId)
   }
 
-  if (response.status === 401) {
+  if (response.status === 401 && endpoint !== '/auth/login') {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
   }
 

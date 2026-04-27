@@ -30,6 +30,8 @@ const config = computed(() => {
   const genericMap: Record<string, BadgeConfig> = {
     active: { label: 'Activo', color: 'var(--success)' },
     inactive: { label: 'Inactivo', color: 'var(--text-secondary)' },
+    scheduled: { label: 'Programado', color: 'var(--warning)' },
+    expired: { label: 'Expirado', color: 'var(--text-secondary)' },
     archived: { label: 'Archivado', color: 'var(--text-secondary)' },
     with_promo: { label: 'Con promo', color: 'var(--accent-hover)' },
     without_promo: { label: 'Sin promo', color: 'var(--text-tertiary)' },

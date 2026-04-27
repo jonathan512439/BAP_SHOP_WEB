@@ -35,8 +35,9 @@ describe('Orders and scheduled jobs', () => {
        VALUES
         ('prod-expired', 'other', 'reserved', 'Producto reservado', 30000, 'good', 'order-expired', ?, ?, ?),
         ('prod-pending', 'other', 'reserved', 'Producto pendiente', 20000, 'good', 'order-pending', ?, ?, ?),
+        ('prod-stale', 'other', 'reserved', 'Producto stale', 18000, 'good', 'order-inexistente', ?, ?, ?),
         ('prod-catalog', 'other', 'active', 'Producto catalogo', 15000, 'like_new', NULL, NULL, ?, ?)`
-    ).bind(past, now, now, future, now, now, now, now).run()
+    ).bind(past, now, now, future, now, now, past, now, now, now, now).run()
 
     await env.DB.prepare(
       `INSERT INTO product_images
@@ -67,6 +68,9 @@ describe('Orders and scheduled jobs', () => {
     const untouchedProduct = await env.DB.prepare(
       'SELECT status, reserved_order_id FROM products WHERE id = ?'
     ).bind('prod-pending').first<{ status: string; reserved_order_id: string | null }>()
+    const staleReleasedProduct = await env.DB.prepare(
+      'SELECT status, reserved_order_id, reserved_until FROM products WHERE id = ?'
+    ).bind('prod-stale').first<{ status: string; reserved_order_id: string | null; reserved_until: string | null }>()
 
     expect(expiredOrder?.status).toBe('expired')
     expect(pendingOrder?.status).toBe('pending')
@@ -78,6 +82,11 @@ describe('Orders and scheduled jobs', () => {
     expect(untouchedProduct).toMatchObject({
       status: 'reserved',
       reserved_order_id: 'order-pending',
+    })
+    expect(staleReleasedProduct).toMatchObject({
+      status: 'active',
+      reserved_order_id: null,
+      reserved_until: null,
     })
   })
 

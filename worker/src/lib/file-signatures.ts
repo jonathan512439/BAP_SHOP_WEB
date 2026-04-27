@@ -29,16 +29,6 @@ function isMp4(bytes: Uint8Array) {
   return bytes.length >= 12 && startsWithBytes(bytes, [0x66, 0x74, 0x79, 0x70], 4)
 }
 
-function isSvg(bytes: Uint8Array) {
-  const sample = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false })
-    .decode(bytes.slice(0, 2048))
-    .trimStart()
-  if (!sample) return false
-  if (sample.startsWith('<svg')) return true
-  if (sample.startsWith('<?xml')) return sample.includes('<svg')
-  return false
-}
-
 export function matchesContentType(buffer: ArrayBuffer, expectedMime: string) {
   const bytes = new Uint8Array(buffer)
 
@@ -49,8 +39,6 @@ export function matchesContentType(buffer: ArrayBuffer, expectedMime: string) {
       return isPng(bytes)
     case 'image/jpeg':
       return isJpeg(bytes)
-    case 'image/svg+xml':
-      return isSvg(bytes)
     case 'video/mp4':
       return isMp4(bytes)
     default:

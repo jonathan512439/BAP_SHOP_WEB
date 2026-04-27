@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import CartDrawer from './components/CartDrawer.vue'
+import PromotionSpotlight from './components/PromotionSpotlight.vue'
 import { useCartStore } from './stores/cart'
 import { useBrandingStore } from './stores/branding'
 import { absoluteUrl, setFavicon, setStructuredData } from './lib/seo'
@@ -206,6 +207,7 @@ watch(
     </footer>
 
     <CartDrawer :isOpen="isCartOpen" @click:close="isCartOpen = false" />
+    <PromotionSpotlight />
     <div v-if="isCartOpen" class="drawer-overlay" @click="isCartOpen = false"></div>
   </div>
 </template>

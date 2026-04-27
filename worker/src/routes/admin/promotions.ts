@@ -6,7 +6,7 @@ import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, rateLimitMiddleware, validateUuidParams } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { markCatalogDirty } from '../../lib/catalog-dirty'
-import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
+import { refreshProductPromotionSnapshots } from '../../lib/catalog-builder'
 import { logError, serializeError } from '../../lib/logger'
 import { upsertSetting } from '../../lib/settings'
 import { nowISO } from '@bap-shop/shared'
@@ -62,7 +62,7 @@ adminPromotionsRouter.put('/:productId', rateLimitMiddleware(RATE_LIMITS.adminMu
     existing ?? null, { discount_pct, starts_at, ends_at, enabled })
 
   await markCatalogDirty(c.env.DB)
-  await refreshCatalogAfterPromotionMutation(c, {
+  await rebuildCatalogOrFailPromotionMutation(c, {
     event: 'promotion.upsert',
     productId,
   })
@@ -84,7 +84,7 @@ adminPromotionsRouter.patch('/:productId/disable', rateLimitMiddleware(RATE_LIMI
 
   await logAction(c.env.DB, c.get('adminId'), 'promotion.disable', 'promotion', productId, promo, { enabled: false })
   await markCatalogDirty(c.env.DB)
-  await refreshCatalogAfterPromotionMutation(c, {
+  await rebuildCatalogOrFailPromotionMutation(c, {
     event: 'promotion.disable',
     productId,
   })
@@ -96,16 +96,24 @@ async function refreshCatalogAfterPromotionMutation(
   c: Context<HonoEnv>,
   context: { event: string; productId: string }
 ) {
+  await refreshProductPromotionSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN, context.productId)
+  await upsertSetting(c.env.DB, 'catalog_dirty', '0')
+}
+
+async function rebuildCatalogOrFailPromotionMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; productId: string }
+) {
   try {
-    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
-    await upsertSetting(c.env.DB, 'catalog_dirty', '0')
+    await refreshCatalogAfterPromotionMutation(c, context)
   } catch (error) {
-    // Se mantiene catalog_dirty=1 para que cron/fallback lo recupere.
+    await markCatalogDirty(c.env.DB)
     logError('catalog_rebuild_after_promotion_change_failed', {
       requestId: c.get('requestId'),
       event: context.event,
       productId: context.productId,
       error: serializeError(error, c.env.ENVIRONMENT !== 'production'),
     })
+    throw error
   }
 }

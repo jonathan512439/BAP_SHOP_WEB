@@ -201,6 +201,7 @@ ordersRouter.post(
 
       const whatsappUrl = buildWhatsappUrl(settings.whatsapp_number, message)
 
+      await markCatalogDirty(c.env.DB)
       queueCatalogRefreshAfterInventoryMutation(c, {
         event: 'orders_reserved',
         orderId: orderResult.orderId,

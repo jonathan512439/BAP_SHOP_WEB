@@ -174,6 +174,7 @@ adminOrdersRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMuta
   await c.env.DB.batch(statements)
   await logAction(c.env.DB, c.get('adminId'), `order.${status}`, 'order', id, { status: order.status }, { status })
 
+  await markCatalogDirty(c.env.DB)
   queueCatalogRefreshAfterInventoryMutation(c, {
     event: status === 'confirmed' ? 'orders_confirmed' : 'orders_cancelled',
     orderId: id,

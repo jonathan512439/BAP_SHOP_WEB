@@ -1,11 +1,15 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { z } from 'zod'
 import type { HonoEnv } from '../../types/env'
 import { RATE_LIMITS, authMiddleware, csrfMiddleware, validateUuidParams, rateLimitMiddleware } from '../../middleware'
 import { logAction } from '../../lib/audit'
 import { markCatalogDirty } from '../../lib/catalog-dirty'
+import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
 import { matchesContentType } from '../../lib/file-signatures'
+import { logError, serializeError } from '../../lib/logger'
+import { upsertSetting } from '../../lib/settings'
 import { generateId, nowISO, PRODUCT_IMAGE_VARIANT_LIMITS_BYTES, VALID_STATUS_TRANSITIONS } from '@bap-shop/shared'
 import type { ProductStatus } from '@bap-shop/shared'
 
@@ -197,6 +201,10 @@ adminProductsRouter.put('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), 
   // Rebuild si el producto es visible
   if (['active', 'hidden'].includes(product.status)) {
     await markCatalogDirty(c.env.DB)
+    queueCatalogRefreshAfterProductMutation(c, {
+      event: 'product.update',
+      productId: id,
+    })
   }
 
   return c.json({ success: true })
@@ -242,6 +250,10 @@ adminProductsRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMu
 
   await logAction(c.env.DB, c.get('adminId'), 'product.status', 'product', id, { status: product.status }, { status: newStatus })
   await markCatalogDirty(c.env.DB)
+  queueCatalogRefreshAfterProductMutation(c, {
+    event: 'product.status',
+    productId: id,
+  })
 
   return c.json({ success: true, data: { id, status: newStatus } })
 })
@@ -309,6 +321,10 @@ adminProductsRouter.delete('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation
 
   await logAction(c.env.DB, c.get('adminId'), 'product.delete', 'product', id, product, null)
   await markCatalogDirty(c.env.DB)
+  queueCatalogRefreshAfterProductMutation(c, {
+    event: 'product.delete',
+    productId: id,
+  })
 
   return c.json({ success: true, data: { id } })
 })
@@ -332,6 +348,10 @@ adminProductsRouter.patch('/:id/sort', rateLimitMiddleware(RATE_LIMITS.adminMuta
     .bind(sort_order, nowISO(), id).run()
   await logAction(c.env.DB, c.get('adminId'), 'product.sort', 'product', id, { sort_order: product.sort_order }, { sort_order })
   await markCatalogDirty(c.env.DB)
+  queueCatalogRefreshAfterProductMutation(c, {
+    event: 'product.sort',
+    productId: id,
+  })
   return c.json({ success: true })
 })
 
@@ -424,6 +444,10 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
     const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
     if (productAfter?.status === 'active') {
       await markCatalogDirty(c.env.DB)
+      queueCatalogRefreshAfterProductMutation(c, {
+        event: 'image.upload',
+        productId: id,
+      })
     }
 
     return c.json({
@@ -487,6 +511,10 @@ adminProductsRouter.delete('/:id/images/:imgId', rateLimitMiddleware(RATE_LIMITS
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
     await markCatalogDirty(c.env.DB)
+    queueCatalogRefreshAfterProductMutation(c, {
+      event: 'image.delete',
+      productId: id,
+    })
   }
 
   return c.json({ success: true })
@@ -521,6 +549,10 @@ adminProductsRouter.patch('/:id/images/:imgId/primary', rateLimitMiddleware(RATE
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
     await markCatalogDirty(c.env.DB)
+    queueCatalogRefreshAfterProductMutation(c, {
+      event: 'image.primary',
+      productId: id,
+    })
   }
 
   return c.json({ success: true })
@@ -565,10 +597,48 @@ adminProductsRouter.patch('/:id/images/sort', rateLimitMiddleware(RATE_LIMITS.ad
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
   if (productAfter?.status === 'active') {
     await markCatalogDirty(c.env.DB)
+    queueCatalogRefreshAfterProductMutation(c, {
+      event: 'image.sort',
+      productId: id,
+    })
   }
 
   return c.json({ success: true })
 })
+
+async function refreshCatalogAfterProductMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; productId: string }
+): Promise<void> {
+  try {
+    await rebuildCatalogSnapshots(c.env.DB, c.env.R2, c.env.R2_PUBLIC_DOMAIN)
+    await upsertSetting(c.env.DB, 'catalog_dirty', '0')
+  } catch (error) {
+    try {
+      await markCatalogDirty(c.env.DB)
+    } catch {
+      // noop: mantener resiliencia del endpoint; error principal queda logueado abajo.
+    }
+    logError('catalog_rebuild_after_product_change_failed', {
+      requestId: c.get('requestId'),
+      event: context.event,
+      productId: context.productId,
+      error: serializeError(error, c.env.ENVIRONMENT !== 'production'),
+    })
+  }
+}
+
+function queueCatalogRefreshAfterProductMutation(
+  c: Context<HonoEnv>,
+  context: { event: string; productId: string }
+) {
+  const task = refreshCatalogAfterProductMutation(c, context)
+  if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+    c.executionCtx.waitUntil(task)
+    return
+  }
+  void task
+}
 
 // ============================================================
 // Helper: validar producto para activación
