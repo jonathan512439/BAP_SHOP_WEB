@@ -12,6 +12,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8787'
 const DEFAULT_BRANDING: PublicBrandingSettings = {
   store_name: DEFAULT_STORE_NAME,
   brand_logo_url: '',
+  whatsapp_number: '',
   social_facebook_url: '',
   social_tiktok_url: '',
   social_instagram_url: '',

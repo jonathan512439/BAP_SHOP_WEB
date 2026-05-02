@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { formatPrice, PHYSICAL_CONDITION_LABELS } from '@bap-shop/shared'
 import { apiClient } from '../api/client'
 import BaseConfirmModal from '../components/BaseConfirmModal.vue'
@@ -38,6 +38,7 @@ interface FeedbackModalState {
 }
 
 const router = useRouter()
+const route = useRoute()
 const products = ref<ProductRow[]>([])
 const isLoading = ref(true)
 const isUpdating = ref<string | null>(null)
@@ -165,7 +166,18 @@ const clearFilters = () => {
   filters.value.status = ''
   filters.value.type = ''
   filters.value.search = ''
+  if (route.query.search) {
+    void router.replace({ query: {} })
+    return
+  }
   fetchProducts(1)
+}
+
+const applyRouteSearch = () => {
+  const routeSearch = typeof route.query.search === 'string' ? route.query.search : ''
+  if (filters.value.search !== routeSearch) {
+    filters.value.search = routeSearch
+  }
 }
 
 const reloadProducts = () => {
@@ -233,8 +245,20 @@ const imageUrl = (r2Key: string | null | undefined) => {
 }
 
 onMounted(() => {
+  applyRouteSearch()
   fetchProducts()
 })
+
+watch(
+  () => route.query.search,
+  () => {
+    const previousSearch = filters.value.search
+    applyRouteSearch()
+    if (filters.value.search !== previousSearch) {
+      fetchProducts(1)
+    }
+  }
+)
 </script>
 
 <template>

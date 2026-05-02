@@ -66,6 +66,21 @@ const cards = computed(() => [
   },
 ])
 
+const activityBars = computed(() => {
+  const items = [
+    { label: 'Activos', value: summary.value.activeProducts, tone: 'bg-success' },
+    { label: 'Reservados', value: summary.value.reservedProducts, tone: 'bg-warning' },
+    { label: 'Pendientes', value: summary.value.pendingOrders, tone: 'bg-accent' },
+    { label: 'Confirmados', value: summary.value.confirmedOrders, tone: 'bg-neutral' },
+  ]
+  const maxValue = Math.max(...items.map((item) => item.value), 1)
+
+  return items.map((item) => ({
+    ...item,
+    width: `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 16 : 0)}%`,
+  }))
+})
+
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 const fallbackLogoSrc = '/brand/bap-logo.svg'
@@ -133,11 +148,45 @@ onMounted(async () => {
       <div v-for="card in cards" :key="card.title" class="stat-card admin-card">
         <h3>{{ card.title }}</h3>
         <span class="stat-value" :class="card.tone">{{ isLoading ? '...' : card.value }}</span>
-        <button type="button" class="btn btn-secondary btn-sm" @click="card.action">
+
+        <div v-if="!isLoading && card.value > 0" class="stat-bar-container">
+          <div
+            class="stat-bar-fill"
+            :class="card.tone.replace('text-', 'bg-')"
+            :style="{ width: Math.min((card.value / 100) * 100, 100) + '%' }"
+          ></div>
+        </div>
+        <div v-else class="stat-bar-container">
+          <div class="stat-bar-fill" style="width: 0%"></div>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm mt-auto" @click="card.action">
           {{ card.actionLabel }}
         </button>
       </div>
     </div>
+
+    <section class="admin-card activity-card">
+      <div class="section-header">
+        <div>
+          <h3>Actividad reciente</h3>
+          <p class="section-copy">Lectura rapida del estado operativo actual entre catalogo y pedidos.</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" @click="router.push('/orders')">Revisar flujo</button>
+      </div>
+
+      <div class="activity-bars">
+        <div v-for="item in activityBars" :key="item.label" class="activity-row">
+          <div class="activity-meta">
+            <strong>{{ item.label }}</strong>
+            <span>{{ isLoading ? '...' : item.value }}</span>
+          </div>
+          <div class="activity-track">
+            <div class="activity-fill" :class="item.tone" :style="{ width: isLoading ? '0%' : item.width }"></div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="dashboard-grid mt-4">
       <section class="admin-card">
@@ -188,7 +237,7 @@ onMounted(async () => {
           >
             <div>
               <strong>{{ log.action }}</strong>
-              <p>{{ log.entity_type }} · {{ log.entity_id }}</p>
+              <p>{{ log.entity_type }} | {{ log.entity_id }}</p>
             </div>
             <div class="row-meta">
               <span>{{ log.admin_username || 'admin' }}</span>
@@ -278,12 +327,44 @@ onMounted(async () => {
   font-size: 0.875rem;
   color: var(--text-secondary);
   font-weight: 500;
+  margin: 0;
 }
 
 .stat-value {
   font-size: 2rem;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.stat-bar-container {
+  width: 100%;
+  height: 4px;
+  background: var(--border-light);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  margin: 0.25rem 0;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+  background-color: var(--text-secondary);
+}
+
+.activity-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bg-success { background-color: var(--success); }
+.bg-warning { background-color: var(--warning); }
+.bg-accent { background-color: var(--accent-primary); }
+.bg-neutral { background-color: #a78bfa; }
+
+.mt-auto {
+  margin-top: auto;
 }
 
 .section-header {
@@ -296,6 +377,49 @@ onMounted(async () => {
 
 .section-header h3 {
   margin: 0;
+}
+
+.section-copy {
+  margin: 0.3rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.activity-bars {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.activity-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.activity-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.activity-meta strong,
+.activity-meta span {
+  font-size: 0.84rem;
+}
+
+.activity-track {
+  width: 100%;
+  height: 0.6rem;
+  background: rgba(148, 163, 184, 0.16);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.activity-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--text-secondary);
 }
 
 .stack-list {
@@ -411,7 +535,10 @@ onMounted(async () => {
 
   .list-row p,
   .row-meta,
-  .row-meta small {
+  .row-meta small,
+  .activity-meta strong,
+  .activity-meta span,
+  .section-copy {
     font-size: 0.74rem;
   }
 

@@ -85,6 +85,19 @@ describe('Admin settings and audit routes', () => {
     })
   })
 
+  it('expone el numero de WhatsApp en settings publicos', async () => {
+    const response = await worker.fetch(
+      new Request('https://example.com/settings/public'),
+      env,
+      {} as ExecutionContext
+    )
+    const payload = await response.json<{ success: boolean; data: Record<string, string> }>()
+
+    expect(response.status).toBe(200)
+    expect(payload.success).toBe(true)
+    expect(payload.data.whatsapp_number).toBe('+59170000001')
+  })
+
   it('reescribe URLs antiguas de branding al dominio publico vigente', () => {
     expect(
       normalizeManagedBrandingUrl(

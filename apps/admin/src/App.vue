@@ -1,15 +1,38 @@
 <script setup lang="ts">
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import { computed, onMounted, ref, watch } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import { useBrandingStore } from './stores/branding'
 import { useConnectivity } from './composables/useConnectivity'
+import { useAuthStore } from './stores/auth'
 
 const route = useRoute()
+const router = useRouter()
 const brandingStore = useBrandingStore()
+const authStore = useAuthStore()
 const { isOnline } = useConnectivity()
 const isLoginRoute = computed(() => route.name === 'login')
 const isSidebarOpen = ref(false)
+const globalSearchQuery = ref('')
+const isLoggingOut = ref(false)
+
+const handleGlobalSearch = () => {
+  if (globalSearchQuery.value.trim()) {
+    router.push({ path: '/products', query: { search: globalSearchQuery.value.trim() } })
+    globalSearchQuery.value = ''
+  }
+}
+
+const handleLogout = async () => {
+  isLoggingOut.value = true
+  try {
+    await authStore.logout()
+    router.push('/login')
+  } finally {
+    isLoggingOut.value = false
+  }
+}
+
 const pageTitle = computed(() => {
   const titles: Record<string, string> = {
     dashboard: 'Resumen general',
@@ -27,7 +50,6 @@ const pageTitle = computed(() => {
 
   return titles[String(route.name ?? '')] || 'BAP-SHOP Admin'
 })
-const brandLogoSrc = computed(() => brandingStore.branding.brand_logo_url || '')
 
 function setFavicon(url: string | null) {
   let link = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')
@@ -98,9 +120,18 @@ watch(
           </button>
           <h2>{{ pageTitle }}</h2>
         </div>
-        <div class="user-menu">
-          <img v-if="brandLogoSrc" :src="brandLogoSrc" alt="BAP Shop" class="topbar-logo" />
-          <span>Panel Admin</span>
+        <div class="topbar-right">
+          <div class="global-search">
+            <input
+              v-model="globalSearchQuery"
+              type="search"
+              placeholder="Buscar productos..."
+              @keyup.enter="handleGlobalSearch"
+            />
+          </div>
+          <button type="button" class="btn-logout" @click="handleLogout" :disabled="isLoggingOut">
+            {{ isLoggingOut ? 'Saliendo...' : 'Cerrar Sesion' }}
+          </button>
         </div>
       </header>
       <div class="page-container">
@@ -170,12 +201,27 @@ watch(
   -webkit-backdrop-filter: blur(8px);
 }
 
-.user-menu {
-  display: inline-flex;
+.topbar-right {
+  display: flex;
   align-items: center;
-  gap: 0.6rem;
-  color: var(--text-secondary);
-  font-weight: 600;
+  gap: 1rem;
+}
+
+.global-search input {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: rgba(0, 0, 0, 0.2);
+  color: white;
+}
+
+.btn-logout {
+  padding: 0.5rem 1rem;
+  background: var(--danger);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
 }
 
 .topbar-logo {
@@ -279,6 +325,16 @@ watch(
   }
 
   .page-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .global-search {
+    display: none;
+  }
+
+  .layout-content {
     padding: 1rem;
   }
 }

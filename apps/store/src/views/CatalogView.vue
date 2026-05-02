@@ -39,8 +39,6 @@ const availableCount = computed(
 )
 const listedCount = computed(() => visibleProducts.value.length)
 
-
-
 onMounted(() => {
   brandingStore.loadBranding()
   applyRouteFilters()
@@ -67,15 +65,27 @@ onMounted(() => {
         </div>
       </div>
     </div>
-    
+
+    <div class="search-container">
+      <input
+        v-model="catalogStore.searchQuery"
+        type="search"
+        class="search-input"
+        placeholder="Buscar por nombre, modelo o palabra clave..."
+        aria-label="Buscar productos"
+      />
+    </div>
+
     <FilterPanel :show-brand-filters="showBrandFilters" @clear="clearFilters" />
-    
-    <BaseEmptyState
-      v-if="catalogStore.isLoading"
-      title="Cargando productos..."
-      description="Estamos preparando el listado mas reciente para ti."
-      loading
-    />
+
+    <div v-if="catalogStore.isLoading" class="product-grid" role="list" aria-label="Cargando productos">
+      <div v-for="n in 8" :key="n" class="skeleton-card glass-card">
+        <div class="skeleton-img"></div>
+        <div class="skeleton-text short"></div>
+        <div class="skeleton-text"></div>
+        <div class="skeleton-text shorter"></div>
+      </div>
+    </div>
 
     <BaseEmptyState
       v-else-if="catalogStore.error"
@@ -205,5 +215,69 @@ onMounted(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.85rem;
   }
+}
+
+.search-container {
+  width: 100%;
+}
+
+.search-input {
+  width: 100%;
+  padding: 1rem 1.5rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  font-size: 1rem;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.15);
+}
+
+/* Skeletons */
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0;
+  overflow: hidden;
+}
+
+.skeleton-img {
+  width: 100%;
+  aspect-ratio: 1;
+  background: rgba(255, 255, 255, 0.05);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.skeleton-text {
+  height: 1.2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-sm);
+  margin: 0 1rem;
+  animation: pulse 1.5s infinite ease-in-out;
+}
+
+.skeleton-text.short {
+  width: 40%;
+  height: 0.8rem;
+  margin-top: 1rem;
+}
+
+.skeleton-text.shorter {
+  width: 30%;
+  margin-bottom: 1rem;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.2; }
+  100% { opacity: 0.6; }
 }
 </style>

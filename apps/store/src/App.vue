@@ -13,26 +13,52 @@ const isCartOpen = ref(false)
 const route = useRoute()
 const { isOnline } = useConnectivity()
 
+const isCartBouncing = ref(false)
+
+watch(
+  () => cartStore.count,
+  (newVal, oldVal) => {
+    if (newVal > oldVal) {
+      isCartBouncing.value = true
+      setTimeout(() => {
+        isCartBouncing.value = false
+      }, 300)
+    }
+  }
+)
+
 onMounted(() => {
   brandingStore.loadBranding()
 })
 
-
 const brandLogoSrc = computed(() => brandingStore.branding.brand_logo_url || '')
 const storeName = computed(() => brandingStore.branding.store_name || 'BAP Shop')
 const bannerImageUrl = computed(() =>
-  brandingStore.branding.store_banner_media_type === 'image' ? brandingStore.branding.store_banner_image_url || '' : ''
+  brandingStore.branding.store_banner_media_type === 'image'
+    ? brandingStore.branding.store_banner_image_url || ''
+    : ''
 )
 const bannerVideoUrl = computed(() =>
-  brandingStore.branding.store_banner_media_type === 'video' ? brandingStore.branding.store_banner_video_url || '' : ''
+  brandingStore.branding.store_banner_media_type === 'video'
+    ? brandingStore.branding.store_banner_video_url || ''
+    : ''
 )
-const socialLinks = computed(() => [
-  { label: 'Facebook', url: brandingStore.branding.social_facebook_url },
-  { label: 'TikTok', url: brandingStore.branding.social_tiktok_url },
-  { label: 'Instagram', url: brandingStore.branding.social_instagram_url },
-].filter((item) => item.url))
-const fixedFooterContactUrl = 'https://wa.me/59167156258'
+const socialLinks = computed(() =>
+  [
+    { label: 'Facebook', url: brandingStore.branding.social_facebook_url },
+    { label: 'TikTok', url: brandingStore.branding.social_tiktok_url },
+    { label: 'Instagram', url: brandingStore.branding.social_instagram_url },
+  ].filter((item) => item.url)
+)
+const devMessage = encodeURIComponent(
+  'Hola, estoy interesad@ en un catalogo para mi negocio, deseo mas informacion.'
+)
+const fixedFooterContactUrl = `https://wa.me/59167156258?text=${devMessage}`
 const fixedFooterPhone = '+591 67156258'
+const storePhoneUrl = computed(() => {
+  const phone = brandingStore.branding.whatsapp_number.replace(/\D/g, '')
+  return phone ? `https://wa.me/${phone}` : ''
+})
 
 watch(
   () => brandingStore.branding,
@@ -86,7 +112,8 @@ watch(
   <div class="app-layout" :class="{ offline: !isOnline }">
     <a href="#main-content" class="skip-link">Ir al contenido principal</a>
     <div v-if="!isOnline" class="connection-banner" role="alert">
-      Sin conexion a internet. Puedes revisar la pagina cargada, pero no podras enviar pedidos hasta reconectar.
+      Sin conexion a internet. Puedes revisar la pagina cargada, pero no podras enviar pedidos hasta
+      reconectar.
     </div>
 
     <header class="glass-header" :class="{ 'with-banner': !!bannerImageUrl || !!bannerVideoUrl }">
@@ -121,14 +148,25 @@ watch(
         </RouterLink>
 
         <div class="nav-links">
-          <RouterLink to="/zapatillas" :class="{ active: route.name === 'sneakers' }">Zapatillas</RouterLink>
+          <RouterLink to="/zapatillas" :class="{ active: route.name === 'sneakers' }"
+            >Zapatillas</RouterLink
+          >
           <RouterLink to="/otros" :class="{ active: route.name === 'others' }">Otros</RouterLink>
-          <RouterLink to="/como-comprar" :class="{ active: route.name === 'how-to-buy' }">Como comprar</RouterLink>
-          <RouterLink to="/preguntas-frecuentes" :class="{ active: route.name === 'faq' }">FAQ</RouterLink>
+          <RouterLink to="/como-comprar" :class="{ active: route.name === 'how-to-buy' }"
+            >Como comprar</RouterLink
+          >
+          <RouterLink to="/preguntas-frecuentes" :class="{ active: route.name === 'faq' }"
+            >FAQ</RouterLink
+          >
           <button
             type="button"
             class="cart-btn"
-            :aria-label="cartStore.count > 0 ? `Abrir carrito con ${cartStore.count} productos` : 'Abrir carrito'"
+            :class="{ 'animate-bounce': isCartBouncing }"
+            :aria-label="
+              cartStore.count > 0
+                ? `Abrir carrito con ${cartStore.count} productos`
+                : 'Abrir carrito'
+            "
             @click="isCartOpen = true"
           >
             <span>Carrito</span>
@@ -155,24 +193,36 @@ watch(
       <div class="footer-grid">
         <section class="footer-section">
           <span class="footer-label">Catalogo y compras</span>
-          <p>Explora articulos por categoria, agrega al carrito y envia tu solicitud para confirmar disponibilidad con la tienda.</p>
+          <p>
+            Explora articulos por categoria, agrega al carrito y envia tu solicitud para confirmar
+            disponibilidad con la tienda.
+          </p>
           <RouterLink to="/zapatillas" class="footer-inline-link">Ir al catalogo</RouterLink>
         </section>
 
         <section class="footer-section">
           <span class="footer-label">Como comprar</span>
-          <p>Revisa el flujo completo de reserva, confirmacion y coordinacion final del pedido por WhatsApp.</p>
+          <p>
+            Revisa el flujo completo de reserva, confirmacion y coordinacion final del pedido por
+            WhatsApp.
+          </p>
           <RouterLink to="/como-comprar" class="footer-inline-link">Ver guia completa</RouterLink>
         </section>
 
         <section class="footer-section">
           <span class="footer-label">Entregas y contacto</span>
           <p>
-            En Oruro, Bolivia, trabajamos con previa coordinacion. Tambien atendemos envios nacionales y consultas por redes.
+            En Oruro, Bolivia, trabajamos con previa coordinacion. Tambien atendemos envios
+            nacionales y consultas por redes.
           </p>
           <p v-if="socialLinks.length" class="footer-socials">
             <template v-for="(social, index) in socialLinks" :key="social.label">
-              <a :href="social.url" target="_blank" rel="noreferrer" :aria-label="`Abrir ${social.label} de ${storeName}`">
+              <a
+                :href="social.url"
+                target="_blank"
+                rel="noreferrer"
+                :aria-label="`Abrir ${social.label} de ${storeName}`"
+              >
                 {{ social.label }}
               </a>
               <span v-if="index < socialLinks.length - 1"> | </span>
@@ -182,10 +232,15 @@ watch(
 
         <section class="footer-section">
           <span class="footer-label">Institucional</span>
-          <p>Conoce mejor la propuesta comercial, nuestras politicas y respuestas a preguntas frecuentes.</p>
+          <p>
+            Conoce mejor la propuesta comercial, nuestras politicas y respuestas a preguntas
+            frecuentes.
+          </p>
           <div class="footer-link-list">
             <RouterLink to="/nosotros" class="footer-inline-link">Nosotros</RouterLink>
-            <RouterLink to="/preguntas-frecuentes" class="footer-inline-link">Preguntas frecuentes</RouterLink>
+            <RouterLink to="/preguntas-frecuentes" class="footer-inline-link"
+              >Preguntas frecuentes</RouterLink
+            >
             <RouterLink to="/politicas" class="footer-inline-link">Politicas</RouterLink>
           </div>
         </section>
@@ -194,10 +249,16 @@ watch(
       <div class="footer-dev-card">
         <span class="footer-label-dev">Desarrollo web: JC-Dev</span>
         <p>
-          Si deseas una pagina similar para tu negocio, puedes contactarme directamente por WhatsApp al
-          <a :href="fixedFooterContactUrl" target="_blank" rel="noreferrer" aria-label="Contactar por WhatsApp a JC-Dev">
-            {{ fixedFooterPhone }} (Haz click aqui)
-          </a>.
+          Si deseas una pagina similar para tu negocio, puedes contactarme directamente por WhatsApp
+          al
+          <a
+            :href="fixedFooterContactUrl"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Contactar por WhatsApp a JC-Dev"
+          >
+            {{ fixedFooterPhone }} (Haz click aqui) </a
+          >.
         </p>
       </div>
 
@@ -209,6 +270,24 @@ watch(
     <CartDrawer :isOpen="isCartOpen" @click:close="isCartOpen = false" />
     <PromotionSpotlight />
     <div v-if="isCartOpen" class="drawer-overlay" @click="isCartOpen = false"></div>
+
+    <a
+      v-if="storePhoneUrl"
+      :href="storePhoneUrl"
+      target="_blank"
+      rel="noreferrer"
+      class="floating-whatsapp"
+      aria-label="Contactar tienda por WhatsApp"
+    >
+      <span class="floating-whatsapp__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path
+            d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"
+          />
+        </svg>
+      </span>
+      <span class="floating-whatsapp__label">WhatsApp</span>
+    </a>
   </div>
 </template>
 

@@ -9,29 +9,53 @@
       </p>
     </header>
 
-    <div class="steps-grid">
-      <article class="glass-card step-card">
-        <span class="step-number">1</span>
-        <h2>Explora el catalogo</h2>
-        <p>Revisa modelos, tallas, fotos y estado del producto antes de agregarlo al carrito.</p>
+    <div class="steps-timeline">
+      <article class="glass-card timeline-card">
+        <div class="timeline-icon">
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+        <div class="timeline-content">
+          <h2>1. Explora el catalogo</h2>
+          <p>Revisa modelos, tallas, fotos y estado del producto antes de agregarlo al carrito.</p>
+        </div>
       </article>
 
-      <article class="glass-card step-card">
-        <span class="step-number">2</span>
-        <h2>Arma tu carrito</h2>
-        <p>Selecciona los productos que te interesan y verifica el resumen antes de enviar tu solicitud.</p>
+      <article class="glass-card timeline-card">
+        <div class="timeline-icon">
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+          </svg>
+        </div>
+        <div class="timeline-content">
+          <h2>2. Arma tu carrito</h2>
+          <p>Selecciona los productos que te interesan y verifica el resumen antes de enviar tu solicitud.</p>
+        </div>
       </article>
 
-      <article class="glass-card step-card">
-        <span class="step-number">3</span>
-        <h2>Confirma tu reserva</h2>
-        <p>Completa tus datos, valida la solicitud y genera el mensaje de WhatsApp con el detalle del pedido.</p>
+      <article class="glass-card timeline-card">
+        <div class="timeline-icon">
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="timeline-content">
+          <h2>3. Confirma tu reserva</h2>
+          <p>Completa tus datos, valida la solicitud y genera el mensaje de WhatsApp con el detalle del pedido.</p>
+        </div>
       </article>
 
-      <article class="glass-card step-card">
-        <span class="step-number">4</span>
-        <h2>Coordina la compra</h2>
-        <p>La tienda revisa disponibilidad, pago, entrega o retiro antes de cerrar la venta de forma definitiva.</p>
+      <article class="glass-card timeline-card">
+        <div class="timeline-icon">
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </div>
+        <div class="timeline-content">
+          <h2>4. Coordina la compra</h2>
+          <p>La tienda revisa disponibilidad, pago, entrega o retiro antes de cerrar la venta de forma definitiva.</p>
+        </div>
       </article>
     </div>
 
@@ -91,41 +115,68 @@
   line-height: 1.7;
 }
 
-.steps-grid,
+.steps-timeline,
 .content-grid {
   display: grid;
   gap: 1.25rem;
 }
 
-.steps-grid {
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+.steps-timeline {
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .steps-timeline {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.timeline-card {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.timeline-icon {
+  flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: rgba(34, 211, 238, 0.15);
+  color: var(--accent-primary);
+  box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.05);
+}
+
+.timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.timeline-content h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.timeline-content p {
+  margin: 0;
 }
 
 .content-grid {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
-.step-card,
 .detail-card {
   display: grid;
   gap: 0.85rem;
 }
 
-.step-number {
-  width: 2rem;
-  height: 2rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(16, 185, 129, 0.14);
-  color: var(--accent-primary);
-  font-weight: 700;
-}
-
 .detail-card p,
 .detail-card li,
-.step-card p {
+.timeline-content p {
   color: var(--text-secondary);
   line-height: 1.7;
 }

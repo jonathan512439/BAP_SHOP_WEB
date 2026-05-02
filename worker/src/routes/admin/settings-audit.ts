@@ -76,6 +76,7 @@ const MIME_EXTENSIONS: Record<string, string> = {
 export const DEFAULT_PUBLIC_BRANDING_SETTINGS = {
   store_name: DEFAULT_STORE_NAME,
   brand_logo_url: '',
+  whatsapp_number: '',
   social_facebook_url: '',
   social_tiktok_url: '',
   social_instagram_url: '',
@@ -143,6 +144,8 @@ export function getPublicBrandingSettings(settings: Record<string, string>, publ
   return {
     store_name: normalizedSettings[SETTINGS_KEYS.STORE_NAME] || DEFAULT_PUBLIC_BRANDING_SETTINGS.store_name,
     brand_logo_url: normalizedSettings[SETTINGS_KEYS.BRAND_LOGO_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.brand_logo_url,
+    whatsapp_number:
+      normalizedSettings[SETTINGS_KEYS.WHATSAPP_NUMBER] || DEFAULT_PUBLIC_BRANDING_SETTINGS.whatsapp_number,
     social_facebook_url:
       normalizedSettings[SETTINGS_KEYS.SOCIAL_FACEBOOK_URL] || DEFAULT_PUBLIC_BRANDING_SETTINGS.social_facebook_url,
     social_tiktok_url:

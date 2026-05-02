@@ -90,6 +90,19 @@ const onCardKeydown = (event: KeyboardEvent) => {
       <div v-if="isUnavailable" class="status-watermark" :class="{ reserved: isReserved }">
         {{ isReserved ? 'Reservado' : 'Vendido' }}
       </div>
+      <button
+        type="button"
+        class="quick-peek"
+        :aria-label="`Abrir detalle rapido de ${product.name}`"
+        @click.stop="openDetail"
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="M12 5c5.5 0 9.27 4.11 10.67 6-.55.75-1.47 1.9-2.8 3.03C18.06 15.58 15.42 17 12 17s-6.06-1.42-7.87-2.97C2.8 12.9 1.88 11.75 1.33 11 2.73 9.11 6.5 5 12 5Zm0 2C8.16 7 5.15 9.58 3.75 11c1.4 1.42 4.41 4 8.25 4s6.85-2.58 8.25-4C18.85 9.58 15.84 7 12 7Zm0 1.5A2.5 2.5 0 1 1 9.5 11 2.5 2.5 0 0 1 12 8.5Zm0 2A.5.5 0 1 0 12.5 11a.5.5 0 0 0-.5-.5Z"
+          />
+        </svg>
+        <span>Ver</span>
+      </button>
       
       <div v-if="product.discount_pct" class="badge discount" :class="{ stacked: isUnavailable }">
         {{ product.discount_pct }}% DESC
@@ -196,7 +209,43 @@ const onCardKeydown = (event: KeyboardEvent) => {
 }
 
 .product-card:hover .product-image {
-  transform: scale(1.05);
+  transform: scale(1.08);
+}
+
+.quick-peek {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(2, 6, 23, 0.72);
+  color: #fff;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.quick-peek svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+}
+
+.product-card:hover .quick-peek,
+.quick-peek:focus-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.quick-peek:hover {
+  border-color: rgba(34, 211, 238, 0.62);
 }
 
 .product-card.is-unavailable .product-image {
@@ -472,6 +521,15 @@ const onCardKeydown = (event: KeyboardEvent) => {
     min-width: 6.8rem;
     padding: 0.32rem 0.55rem;
     font-size: 0.64rem;
+  }
+
+  .quick-peek {
+    opacity: 1;
+    transform: translateY(0);
+    right: 0.45rem;
+    bottom: 0.45rem;
+    padding: 0.36rem 0.58rem;
+    font-size: 0.7rem;
   }
 }
 </style>

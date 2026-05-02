@@ -56,6 +56,7 @@ export const useCatalogStore = defineStore('catalog', () => {
   const selectedModel = ref<string>('')
   const selectedCondition = ref<string>('')
   const selectedSize = ref<string>('')
+  const searchQuery = ref<string>('')
 
   const fetchCatalog = async () => {
     if (fetchCatalogPromise) return fetchCatalogPromise
@@ -130,6 +131,11 @@ export const useCatalogStore = defineStore('catalog', () => {
       if (applySneakerFilters && selectedModel.value && product.model?.id !== selectedModel.value) return false
       if (selectedCondition.value && product.physical_condition !== selectedCondition.value) return false
       if (applySneakerFilters && selectedSize.value && product.size !== selectedSize.value) return false
+      if (searchQuery.value) {
+        const query = searchQuery.value.toLowerCase()
+        const searchTarget = `${product.name} ${product.model?.name || ''} ${product.brand?.name || ''} ${product.size || ''}`.toLowerCase()
+        if (!searchTarget.includes(query)) return false
+      }
       return true
     }).slice().sort((a, b) => {
       const statusDiff = (STATUS_PRIORITY[a.status] ?? 999) - (STATUS_PRIORITY[b.status] ?? 999)
@@ -147,6 +153,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectedModel.value = ''
     selectedCondition.value = ''
     selectedSize.value = ''
+    searchQuery.value = ''
   }
 
   return {
@@ -159,6 +166,7 @@ export const useCatalogStore = defineStore('catalog', () => {
     selectedModel,
     selectedCondition,
     selectedSize,
+    searchQuery,
     availableModels,
     fetchCatalog,
     getFilteredProducts,

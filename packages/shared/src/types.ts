@@ -206,6 +206,7 @@ export interface CatalogManifest {
 export interface PublicBrandingSettings {
   store_name: string
   brand_logo_url: string
+  whatsapp_number: string
   social_facebook_url: string
   social_tiktok_url: string
   social_instagram_url: string

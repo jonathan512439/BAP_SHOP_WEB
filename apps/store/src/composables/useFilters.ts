@@ -87,6 +87,7 @@ export function useFilters(categoryType: ComputedRef<ProductType>, itemsPerPage 
       () => catalogStore.selectedModel,
       () => catalogStore.selectedSize,
       () => catalogStore.selectedCondition,
+      () => catalogStore.searchQuery,
     ],
     () => {
       resetPage()

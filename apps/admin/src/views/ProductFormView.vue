@@ -79,6 +79,7 @@ const publicAssetsBase =
 const isLoading = ref(false)
 const isSaving = ref(false)
 const isOptimizingImages = ref(false)
+const isDragging = ref(false)
 const brands = ref<Brand[]>([])
 const models = ref<Model[]>([])
 const images = ref<ProductDetailResponse['images']>([])
@@ -271,13 +272,10 @@ const getExistingImagePreviewUrl = (image: ProductDetailResponse['images'][numbe
   return getImagePreviewUrl(image.thumb_r2_key || image.card_r2_key || image.r2_key)
 }
 
-const handleFileChange = async (event: Event) => {
+const processFiles = async (files: FileList | File[]) => {
   resetServerErrors()
 
-  const target = event.target as HTMLInputElement
-  if (!target.files) return
-
-  const nextFiles = Array.from(target.files)
+  const nextFiles = Array.from(files)
   isOptimizingImages.value = true
 
   try {
@@ -317,8 +315,19 @@ const handleFileChange = async (event: Event) => {
   } finally {
     isOptimizingImages.value = false
   }
+}
 
+const handleFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  if (!target.files) return
+  await processFiles(target.files)
   target.value = ''
+}
+
+const onDrop = async (event: DragEvent) => {
+  isDragging.value = false
+  if (!event.dataTransfer?.files) return
+  await processFiles(event.dataTransfer.files)
 }
 
 const removeQueuedImage = (index: number) => {
@@ -643,14 +652,26 @@ const setPrimaryImage = async (imgId: string) => {
           label="Subir nuevas imagenes"
           help="Formatos permitidos: JPG, PNG, WebP. Se optimizan automaticamente a WebP liviano antes de subir."
         >
-          <input
-            type="file"
-            multiple
-            accept="image/jpeg,image/png,image/webp"
-            class="form-input file-input"
-            :disabled="isOptimizingImages || !isOnline"
-            @change="handleFileChange"
-          />
+          <div
+            class="upload-area"
+            :class="{ 'is-dragging': isDragging }"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            @drop.prevent="onDrop"
+          >
+            <label for="file-upload" class="upload-label">
+              <span>Haz clic o arrastra fotos aqui</span>
+            </label>
+            <input
+              id="file-upload"
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp"
+              class="form-input file-input"
+              :disabled="isOptimizingImages || !isOnline"
+              @change="handleFileChange"
+            />
+          </div>
         </FormField>
 
         <p v-if="isOptimizingImages" class="text-secondary text-sm mt-2">Optimizando imagenes para el catalogo...</p>
@@ -826,10 +847,39 @@ const setPrimaryImage = async (imgId: string) => {
   color: var(--danger);
 }
 
-.file-input {
-  padding: 1rem;
+.upload-area {
+  position: relative;
+  margin-top: 0.5rem;
+  border: 2px dashed var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 2rem 1rem;
+  text-align: center;
+  transition: all var(--transition-fast);
   background: var(--bg-tertiary);
-  border: 1px dashed var(--border-focus);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.upload-area.is-dragging {
+  border-color: var(--accent-primary);
+  background: rgba(34, 211, 238, 0.05);
+}
+
+.upload-area:hover {
+  border-color: var(--border-focus);
+}
+
+.upload-label {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.file-input {
+  width: 100%;
 }
 
 .queued-grid {
