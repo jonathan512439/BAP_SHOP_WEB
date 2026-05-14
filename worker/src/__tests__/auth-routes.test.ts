@@ -4,18 +4,25 @@ import worker from '../index'
 import { nowISO } from '@bap-shop/shared'
 import { cleanupTestDb, setupTestDb } from './setup'
 import { generateCsrfToken, generateSessionToken, hashPassword, verifyPassword } from '../lib/auth'
+import type { Env as WorkerEnv } from '../types/env'
 
 describe('Auth routes', () => {
   const adminId = 'admin-auth-1'
   const testAdminPepper = 'vitest-admin-pepper'
+  const requestEnv = new Proxy(env as unknown as WorkerEnv, {
+    get(target, property, receiver) {
+      if (property === 'ADMIN_PEPPER') {
+        return testAdminPepper
+      }
+
+      return Reflect.get(target as object, property, receiver)
+    },
+  }) as WorkerEnv
   let sessionToken = ''
   let csrfToken = ''
 
   beforeAll(async () => {
     await setupTestDb()
-    Object.assign(env as unknown as Record<string, unknown>, {
-      ADMIN_PEPPER: testAdminPepper,
-    })
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -56,7 +63,7 @@ describe('Auth routes', () => {
         ...init,
         headers,
       }),
-      env,
+      requestEnv,
       {} as ExecutionContext
     )
   }
