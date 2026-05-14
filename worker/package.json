@@ -19,14 +19,14 @@
   "dependencies": {
     "@bap-shop/shared": "workspace:*",
     "@hono/zod-validator": "^0.3.0",
-    "hono": "^4.5.0",
+    "hono": "^4.12.18",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.5.0",
-    "@cloudflare/workers-types": "^4.20240925.0",
-    "typescript": "^5.5.0",
-    "vitest": "^2.0.0",
-    "wrangler": "^4.77.0"
+    "@cloudflare/vitest-pool-workers": "^0.16.4",
+    "@cloudflare/workers-types": "^4.20260511.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6",
+    "wrangler": "^4.90.1"
   }
 }
