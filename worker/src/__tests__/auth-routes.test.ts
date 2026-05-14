@@ -7,11 +7,15 @@ import { generateCsrfToken, generateSessionToken, hashPassword, verifyPassword }
 
 describe('Auth routes', () => {
   const adminId = 'admin-auth-1'
+  const testAdminPepper = 'vitest-admin-pepper'
   let sessionToken = ''
   let csrfToken = ''
 
   beforeAll(async () => {
     await setupTestDb()
+    Object.assign(env as unknown as Record<string, unknown>, {
+      ADMIN_PEPPER: testAdminPepper,
+    })
 
     const now = nowISO()
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString()
@@ -19,7 +23,7 @@ describe('Auth routes', () => {
     sessionToken = session.token
     csrfToken = generateCsrfToken()
 
-    const passwordHash = await hashPassword('ClaveActual123!', env.ADMIN_PEPPER)
+    const passwordHash = await hashPassword('ClaveActual123!', testAdminPepper)
 
     await env.DB.prepare(
       `INSERT INTO admins (id, username, password_hash, created_at)
@@ -83,8 +87,8 @@ describe('Auth routes', () => {
     expect(response.status).toBe(200)
     expect(payload.success).toBe(true)
     expect(admin).not.toBeNull()
-    expect(await verifyPassword('NuevaClave456!', admin!.password_hash, env.ADMIN_PEPPER)).toBe(true)
-    expect(await verifyPassword('ClaveActual123!', admin!.password_hash, env.ADMIN_PEPPER)).toBe(false)
+    expect(await verifyPassword('NuevaClave456!', admin!.password_hash, testAdminPepper)).toBe(true)
+    expect(await verifyPassword('ClaveActual123!', admin!.password_hash, testAdminPepper)).toBe(false)
     expect(currentSession).not.toBeNull()
     expect(oldSession).toBeNull()
   })
