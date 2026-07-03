@@ -1,7 +1,11 @@
+import { PRODUCT_IMAGE_VARIANT_LIMITS_BYTES } from '@bap-shop/shared'
+
 type ImageOptimizationOptions = {
   maxWidth: number
   maxHeight: number
   quality: number
+  minQuality?: number
+  maxBytes?: number
   outputType: 'image/webp' | 'image/jpeg'
 }
 
@@ -99,7 +103,7 @@ async function optimizeRasterImage(file: File, options: ImageOptimizationOptions
   })
 }
 
-async function optimizeRasterImageFromElement(
+async function encodeRasterImageFromElement(
   image: HTMLImageElement,
   sourceName: string,
   suffix: string,
@@ -126,6 +130,47 @@ async function optimizeRasterImageFromElement(
     type: options.outputType,
     lastModified: Date.now(),
   })
+}
+
+async function optimizeRasterImageFromElement(
+  image: HTMLImageElement,
+  sourceName: string,
+  suffix: string,
+  options: ImageOptimizationOptions
+) {
+  const maxBytes = options.maxBytes
+  if (!maxBytes) {
+    return encodeRasterImageFromElement(image, sourceName, suffix, options)
+  }
+
+  const minQuality = options.minQuality ?? Math.max(0.68, options.quality - 0.12)
+  let bestFile: File | null = null
+  let maxWidth = options.maxWidth
+  let maxHeight = options.maxHeight
+
+  for (let scaleAttempt = 0; scaleAttempt < 3; scaleAttempt += 1) {
+    for (let quality = options.quality; quality >= minQuality; quality -= 0.04) {
+      const candidate = await encodeRasterImageFromElement(image, sourceName, suffix, {
+        ...options,
+        maxWidth,
+        maxHeight,
+        quality: Number(quality.toFixed(2)),
+      })
+
+      if (!bestFile || candidate.size < bestFile.size) {
+        bestFile = candidate
+      }
+
+      if (candidate.size <= maxBytes) {
+        return candidate
+      }
+    }
+
+    maxWidth = Math.max(1, Math.round(maxWidth * 0.92))
+    maxHeight = Math.max(1, Math.round(maxHeight * 0.92))
+  }
+
+  return bestFile ?? encodeRasterImageFromElement(image, sourceName, suffix, options)
 }
 
 async function getFfmpegToolkit() {
@@ -206,25 +251,33 @@ export async function optimizeProductImageVariants(file: File): Promise<ProductI
     optimizeRasterImageFromElement(image, file.name, 'thumb', {
       maxWidth: 320,
       maxHeight: 320,
-      quality: 0.72,
+      quality: 0.8,
+      minQuality: 0.72,
+      maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.thumb,
       outputType: 'image/webp',
     }),
     optimizeRasterImageFromElement(image, file.name, 'card', {
       maxWidth: 640,
       maxHeight: 640,
-      quality: 0.76,
+      quality: 0.82,
+      minQuality: 0.74,
+      maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.card,
       outputType: 'image/webp',
     }),
     optimizeRasterImageFromElement(image, file.name, 'detail', {
       maxWidth: 1200,
       maxHeight: 1200,
-      quality: 0.8,
+      quality: 0.84,
+      minQuality: 0.76,
+      maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.detail,
       outputType: 'image/webp',
     }),
     optimizeRasterImageFromElement(image, file.name, 'full', {
       maxWidth: 1600,
       maxHeight: 1600,
-      quality: 0.84,
+      quality: 0.88,
+      minQuality: 0.8,
+      maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.full,
       outputType: 'image/webp',
     }),
   ])

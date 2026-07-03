@@ -28,10 +28,10 @@ const pendingImagesWhere = `
 `
 
 const variants = {
-  thumb: { max: 320, quality: 72, limit: 150 * 1024 },
-  card: { max: 640, quality: 76, limit: 450 * 1024 },
-  detail: { max: 1200, quality: 80, limit: 1100 * 1024 },
-  full: { max: 1600, quality: 84, limit: 2200 * 1024 },
+  thumb: { max: 320, quality: 80, limit: 256 * 1024 },
+  card: { max: 640, quality: 82, limit: 700 * 1024 },
+  detail: { max: 1200, quality: 84, limit: 1500 * 1024 },
+  full: { max: 1600, quality: 88, limit: 3000 * 1024 },
 }
 
 try {

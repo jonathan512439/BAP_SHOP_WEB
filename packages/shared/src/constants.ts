@@ -133,10 +133,10 @@ export const PRODUCT_IMAGE_VARIANTS = {
 export type ProductImageVariant = (typeof PRODUCT_IMAGE_VARIANTS)[keyof typeof PRODUCT_IMAGE_VARIANTS]
 
 export const PRODUCT_IMAGE_VARIANT_LIMITS_BYTES: Record<ProductImageVariant, number> = {
-  thumb: 150 * 1024,
-  card: 450 * 1024,
-  detail: 1100 * 1024,
-  full: 2200 * 1024,
+  thumb: 256 * 1024,
+  card: 700 * 1024,
+  detail: 1500 * 1024,
+  full: 3000 * 1024,
 }
 export const MAX_CART_ITEMS = 20
 export const SESSION_DURATION_HOURS = 8
