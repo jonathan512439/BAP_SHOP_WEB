@@ -73,7 +73,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
     @click="openDetail"
     @keydown="onCardKeydown"
   >
-    <button class="image-wrapper image-button" :aria-label="`Ver imagenes y detalle de ${product.name}`" @click="openDetail" type="button">
+    <div class="image-wrapper">
       <img
         v-if="cardImageUrl"
         :src="cardImageUrl"
@@ -113,7 +113,7 @@ const onCardKeydown = (event: KeyboardEvent) => {
       <div class="badge condition">
         {{ conditionLabel }}
       </div>
-    </button>
+    </div>
 
     <div class="content">
       <div class="meta">
@@ -180,7 +180,6 @@ const onCardKeydown = (event: KeyboardEvent) => {
   border-bottom: 1px solid var(--border-light);
 }
 
-.image-button,
 .name-link {
   border: 0;
   padding: 0;
@@ -191,12 +190,6 @@ const onCardKeydown = (event: KeyboardEvent) => {
   cursor: pointer;
 }
 
-.image-button {
-  display: block;
-  width: 100%;
-}
-
-.image-button:focus-visible,
 .name-link:focus-visible {
   outline-offset: -4px;
 }

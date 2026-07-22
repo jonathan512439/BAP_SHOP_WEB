@@ -340,13 +340,19 @@ adminSettingsRouter.post('/assets/:assetType', rateLimitMiddleware(RATE_LIMITS.b
 export const adminAuditRouter = new Hono<HonoEnv>()
 adminAuditRouter.use('*', authMiddleware())
 
+function parseBoundedPositiveInt(value: string | undefined, fallback: number, max: number) {
+  const parsed = Number.parseInt(value ?? '', 10)
+  const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  return Math.min(max, safeValue)
+}
+
 adminAuditRouter.get('/', async (c) => {
   const action = c.req.query('action')
   const entityType = c.req.query('entity_type')
   const dateFrom = c.req.query('date_from')
   const dateTo = c.req.query('date_to')
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit = Math.min(100, parseInt(c.req.query('limit') ?? '50', 10))
+  const page = parseBoundedPositiveInt(c.req.query('page'), 1, Number.MAX_SAFE_INTEGER)
+  const limit = parseBoundedPositiveInt(c.req.query('limit'), 50, 100)
   const offset = (page - 1) * limit
 
   const conditions: string[] = []

@@ -68,6 +68,15 @@ function isJsonBody(value: unknown): value is JsonBody {
   )
 }
 
+function isRequestTimeoutError(error: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) return false
+  if (error instanceof DOMException && error.name === 'AbortError') return true
+  if (error instanceof Error && error.message === 'request_timeout') return true
+
+  const reason = signal.reason
+  return reason instanceof Error && reason.message === 'request_timeout'
+}
+
 export async function apiClient<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, body, timeoutMs, ...customConfig } = options
 
@@ -137,7 +146,7 @@ export async function apiClient<T>(endpoint: string, options: FetchOptions = {})
       clearTimeout(timeoutId)
     }
 
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (isRequestTimeoutError(error, timeoutController.signal)) {
       throw new ApiError('El servidor tardo demasiado en responder. Intenta nuevamente.', 0, { cause: 'timeout' })
     }
 

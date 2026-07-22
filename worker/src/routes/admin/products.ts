@@ -9,8 +9,15 @@ import { markCatalogDirty } from '../../lib/catalog-dirty'
 import { rebuildCatalogSnapshots } from '../../lib/catalog-builder'
 import { matchesContentType } from '../../lib/file-signatures'
 import { logError, serializeError } from '../../lib/logger'
-import { upsertSetting } from '../../lib/settings'
-import { generateId, nowISO, PRODUCT_IMAGE_VARIANT_LIMITS_BYTES, VALID_STATUS_TRANSITIONS } from '@bap-shop/shared'
+import { loadSettingsByKeys, upsertSetting } from '../../lib/settings'
+import {
+  DEFAULT_ORDER_EXPIRY_MINUTES,
+  generateId,
+  nowISO,
+  PRODUCT_IMAGE_VARIANT_LIMITS_BYTES,
+  SETTINGS_KEYS,
+  VALID_STATUS_TRANSITIONS,
+} from '@bap-shop/shared'
 import type { ProductStatus } from '@bap-shop/shared'
 
 export const adminProductsRouter = new Hono<HonoEnv>()
@@ -20,6 +27,32 @@ adminProductsRouter.use('/:id', validateUuidParams('id'))
 
 type ProductImageVariantName = 'thumb' | 'card' | 'detail' | 'full'
 const PRODUCT_IMAGE_VARIANT_NAMES: ProductImageVariantName[] = ['thumb', 'card', 'detail', 'full']
+const PRODUCT_IMAGE_VARIANT_MIME_EXTENSIONS: Record<string, string> = {
+  'image/webp': 'webp',
+  'image/jpeg': 'jpg',
+}
+const CATALOG_VISIBLE_PRODUCT_STATUSES = new Set(['active', 'reserved', 'sold'])
+
+function isCatalogVisibleStatus(status: string | null | undefined) {
+  return !!status && CATALOG_VISIBLE_PRODUCT_STATUSES.has(status)
+}
+
+function parseBoundedPositiveInt(value: string | undefined, fallback: number, max: number) {
+  const parsed = Number.parseInt(value ?? '', 10)
+  const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  return Math.min(max, safeValue)
+}
+
+async function getManualReservationExpiry(db: D1Database): Promise<string> {
+  const settings = await loadSettingsByKeys(db, [SETTINGS_KEYS.ORDER_EXPIRY_MINUTES])
+  const minutes = parseBoundedPositiveInt(
+    settings[SETTINGS_KEYS.ORDER_EXPIRY_MINUTES],
+    DEFAULT_ORDER_EXPIRY_MINUTES,
+    7 * 24 * 60
+  )
+
+  return new Date(Date.now() + minutes * 60 * 1000).toISOString()
+}
 
 // ============================================================
 // Schemas de validación
@@ -64,8 +97,8 @@ adminProductsRouter.get('/', async (c) => {
   const status = c.req.query('status')
   const type = c.req.query('type')
   const search = c.req.query('search')
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit = Math.min(50, parseInt(c.req.query('limit') ?? '20', 10))
+  const page = parseBoundedPositiveInt(c.req.query('page'), 1, Number.MAX_SAFE_INTEGER)
+  const limit = parseBoundedPositiveInt(c.req.query('limit'), 20, 50)
   const offset = (page - 1) * limit
 
   const conditions: string[] = []
@@ -199,7 +232,7 @@ adminProductsRouter.put('/:id', rateLimitMiddleware(RATE_LIMITS.adminMutation), 
   await logAction(c.env.DB, c.get('adminId'), 'product.update', 'product', id, product, updates)
 
   // Rebuild si el producto es visible
-  if (['active', 'hidden'].includes(product.status)) {
+  if (isCatalogVisibleStatus(product.status)) {
     await markCatalogDirty(c.env.DB)
     queueCatalogRefreshAfterProductMutation(c, {
       event: 'product.update',
@@ -241,12 +274,20 @@ adminProductsRouter.patch('/:id/status', rateLimitMiddleware(RATE_LIMITS.adminMu
     }
   }
 
+  const manualReservedUntil = newStatus === 'reserved'
+    ? await getManualReservationExpiry(c.env.DB)
+    : null
+
   await c.env.DB.prepare(
     `UPDATE products SET status = ?, updated_at = ?,
      reserved_order_id = CASE WHEN ? IN ('active', 'sold', 'hidden', 'reserved') THEN NULL ELSE reserved_order_id END,
-     reserved_until = CASE WHEN ? IN ('active', 'sold', 'hidden', 'reserved') THEN NULL ELSE reserved_until END
+     reserved_until = CASE
+       WHEN ? = 'reserved' THEN ?
+       WHEN ? IN ('active', 'sold', 'hidden') THEN NULL
+       ELSE reserved_until
+     END
      WHERE id = ?`
-  ).bind(newStatus, now, newStatus, newStatus, id).run()
+  ).bind(newStatus, now, newStatus, newStatus, manualReservedUntil, newStatus, id).run()
 
   await logAction(c.env.DB, c.get('adminId'), 'product.status', 'product', id, { status: product.status }, { status: newStatus })
   await markCatalogDirty(c.env.DB)
@@ -371,7 +412,10 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
 
   if (contentType.includes('multipart/form-data')) {
     const parsedBody = await c.req.parseBody()
-    const files: Record<ProductImageVariantName, { bytes: ArrayBuffer }> = {} as Record<ProductImageVariantName, { bytes: ArrayBuffer }>
+    const files: Record<ProductImageVariantName, { bytes: ArrayBuffer; contentType: string; extension: string }> = {} as Record<
+      ProductImageVariantName,
+      { bytes: ArrayBuffer; contentType: string; extension: string }
+    >
 
     for (const variant of PRODUCT_IMAGE_VARIANT_NAMES) {
       const file = parsedBody[variant]
@@ -379,8 +423,9 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
         return c.json({ success: false, error: `Falta la variante de imagen: ${variant}` }, 422)
       }
 
-      if (file.type !== 'image/webp') {
-        return c.json({ success: false, error: `La variante ${variant} debe estar en formato WebP.` }, 422)
+      const extension = PRODUCT_IMAGE_VARIANT_MIME_EXTENSIONS[file.type]
+      if (!extension) {
+        return c.json({ success: false, error: `La variante ${variant} debe estar en formato WebP o JPEG.` }, 422)
       }
 
       const maxBytes = PRODUCT_IMAGE_VARIANT_LIMITS_BYTES[variant]
@@ -389,25 +434,25 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
       }
 
       const bytes = await file.arrayBuffer()
-      if (!matchesContentType(bytes, 'image/webp')) {
-        return c.json({ success: false, error: `La variante ${variant} no contiene un WebP valido.` }, 422)
+      if (!matchesContentType(bytes, file.type)) {
+        return c.json({ success: false, error: `La variante ${variant} no contiene una imagen valida.` }, 422)
       }
 
-      files[variant] = { bytes }
+      files[variant] = { bytes, contentType: file.type, extension }
     }
 
     const baseKey = `public/products/${id}/${imgId}`
     const variantKeys: Record<ProductImageVariantName, string> = {
-      thumb: `${baseKey}/thumb.webp`,
-      card: `${baseKey}/card.webp`,
-      detail: `${baseKey}/detail.webp`,
-      full: `${baseKey}/full.webp`,
+      thumb: `${baseKey}/thumb.${files.thumb.extension}`,
+      card: `${baseKey}/card.${files.card.extension}`,
+      detail: `${baseKey}/detail.${files.detail.extension}`,
+      full: `${baseKey}/full.${files.full.extension}`,
     }
 
     await Promise.all(
       PRODUCT_IMAGE_VARIANT_NAMES.map(async (variant) => {
         await c.env.R2.put(variantKeys[variant], files[variant].bytes, {
-          httpMetadata: { contentType: 'image/webp' },
+          httpMetadata: { contentType: files[variant].contentType },
         })
       })
     )
@@ -442,7 +487,7 @@ adminProductsRouter.post('/:id/images', rateLimitMiddleware(RATE_LIMITS.imageUpl
     })
 
     const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
-    if (productAfter?.status === 'active') {
+    if (isCatalogVisibleStatus(productAfter?.status)) {
       await markCatalogDirty(c.env.DB)
       queueCatalogRefreshAfterProductMutation(c, {
         event: 'image.upload',
@@ -509,7 +554,7 @@ adminProductsRouter.delete('/:id/images/:imgId', rateLimitMiddleware(RATE_LIMITS
   await logAction(c.env.DB, c.get('adminId'), 'image.delete', 'product_image', imgId, img, null)
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
-  if (productAfter?.status === 'active') {
+  if (isCatalogVisibleStatus(productAfter?.status)) {
     await markCatalogDirty(c.env.DB)
     queueCatalogRefreshAfterProductMutation(c, {
       event: 'image.delete',
@@ -547,7 +592,7 @@ adminProductsRouter.patch('/:id/images/:imgId/primary', rateLimitMiddleware(RATE
   })
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
-  if (productAfter?.status === 'active') {
+  if (isCatalogVisibleStatus(productAfter?.status)) {
     await markCatalogDirty(c.env.DB)
     queueCatalogRefreshAfterProductMutation(c, {
       event: 'image.primary',
@@ -595,7 +640,7 @@ adminProductsRouter.patch('/:id/images/sort', rateLimitMiddleware(RATE_LIMITS.ad
   })
 
   const productAfter = await c.env.DB.prepare('SELECT status FROM products WHERE id = ?').bind(id).first<{ status: string }>()
-  if (productAfter?.status === 'active') {
+  if (isCatalogVisibleStatus(productAfter?.status)) {
     await markCatalogDirty(c.env.DB)
     queueCatalogRefreshAfterProductMutation(c, {
       event: 'image.sort',

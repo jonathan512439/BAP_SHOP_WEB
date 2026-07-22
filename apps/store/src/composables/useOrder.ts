@@ -2,6 +2,15 @@ import { ref } from 'vue'
 import type { ApiResponse, CreateOrderResponse, InvalidCartItem } from '@bap-shop/shared'
 import { useCartStore } from '../stores/cart'
 
+function isRequestTimeoutError(error: unknown, signal: AbortSignal): boolean {
+  if (!signal.aborted) return false
+  if (error instanceof DOMException && error.name === 'AbortError') return true
+  if (error instanceof Error && error.message === 'request_timeout') return true
+
+  const reason = signal.reason
+  return reason instanceof Error && reason.message === 'request_timeout'
+}
+
 export function useOrder() {
   const cartStore = useCartStore()
   const isSubmitting = ref(false)
@@ -33,6 +42,7 @@ export function useOrder() {
 
     isSubmitting.value = true
     let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let requestSignal: AbortSignal | null = null
 
     try {
       if (!pendingIdempotencyKey.value) {
@@ -40,6 +50,7 @@ export function useOrder() {
       }
 
       const controller = new AbortController()
+      requestSignal = controller.signal
       timeoutId = setTimeout(() => controller.abort(new Error('request_timeout')), 15000)
 
       const response = await fetch(`${input.apiUrl}/orders`, {
@@ -83,7 +94,7 @@ export function useOrder() {
       pendingIdempotencyKey.value = ''
       return { success: true as const, result }
     } catch (error) {
-      const isTimeout = error instanceof DOMException && error.name === 'AbortError'
+      const isTimeout = requestSignal ? isRequestTimeoutError(error, requestSignal) : false
       submitError.value = typeof window !== 'undefined' && typeof navigator !== 'undefined' && navigator.onLine === false
         ? 'La conexion se perdio mientras se enviaba el pedido. Vuelve a intentar cuando estes en linea.'
         : isTimeout

@@ -19,7 +19,7 @@
   "dependencies": {
     "@bap-shop/shared": "workspace:*",
     "@hono/zod-validator": "^0.3.0",
-    "hono": "^4.12.18",
+    "hono": "^4.12.27",
     "zod": "^3.23.0"
   },
   "devDependencies": {

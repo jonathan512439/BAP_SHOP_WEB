@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
 import type { HonoEnv } from '../types/env'
+import { logWarn } from '../lib/logger'
 
 type RateLimitMode = 'errors-only' | 'all'
 type RateLimitIdentity = 'ip' | 'admin-or-ip'
@@ -119,7 +120,19 @@ export const rateLimitMiddleware = (
     const identity = config.identity ?? 'ip'
     const kvKey = `${config.keyPrefix}:${getRateLimitIdentity(c, identity)}`
 
-    const raw = await c.env.KV.get(kvKey)
+    let raw: string | null = null
+    try {
+      raw = await c.env.KV.get(kvKey)
+    } catch (error) {
+      logWarn('rate_limit_kv_read_failed', {
+        requestId: c.get('requestId'),
+        keyPrefix: config.keyPrefix,
+        error: error instanceof Error ? error.message : 'unknown',
+      })
+      await next()
+      return
+    }
+
     const attempts = raw ? parseInt(raw, 10) : 0
 
     if (attempts >= config.maxAttempts) {
@@ -143,14 +156,30 @@ export const rateLimitMiddleware = (
 
     if (shouldCountResponse(status, mode)) {
       const nextAttempts = attempts + 1
-      await c.env.KV.put(kvKey, String(nextAttempts), { expirationTtl: config.windowSec })
+      try {
+        await c.env.KV.put(kvKey, String(nextAttempts), { expirationTtl: config.windowSec })
+      } catch (error) {
+        logWarn('rate_limit_kv_write_failed', {
+          requestId: c.get('requestId'),
+          keyPrefix: config.keyPrefix,
+          error: error instanceof Error ? error.message : 'unknown',
+        })
+      }
       c.res.headers.set('X-RateLimit-Limit', String(config.maxAttempts))
       c.res.headers.set('X-RateLimit-Remaining', String(Math.max(0, config.maxAttempts - nextAttempts)))
       return
     }
 
     if (mode === 'errors-only' && status >= 200 && status < 300) {
-      await c.env.KV.delete(kvKey)
+      try {
+        await c.env.KV.delete(kvKey)
+      } catch (error) {
+        logWarn('rate_limit_kv_delete_failed', {
+          requestId: c.get('requestId'),
+          keyPrefix: config.keyPrefix,
+          error: error instanceof Error ? error.message : 'unknown',
+        })
+      }
     }
   }
 }

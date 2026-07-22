@@ -16,14 +16,20 @@ adminOrdersRouter.use('*', authMiddleware())
 adminOrdersRouter.use('/:id/*', validateUuidParams('id'))
 adminOrdersRouter.use('/:id', validateUuidParams('id'))
 
+function parseBoundedPositiveInt(value: string | undefined, fallback: number, max: number) {
+  const parsed = Number.parseInt(value ?? '', 10)
+  const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+  return Math.min(max, safeValue)
+}
+
 // GET /admin/orders?status=&page=&limit=&search=
 adminOrdersRouter.get('/', async (c) => {
   const status = c.req.query('status')
   const search = c.req.query('search')
   const dateFrom = c.req.query('date_from')
   const dateTo = c.req.query('date_to')
-  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10))
-  const limit = Math.min(50, parseInt(c.req.query('limit') ?? '20', 10))
+  const page = parseBoundedPositiveInt(c.req.query('page'), 1, Number.MAX_SAFE_INTEGER)
+  const limit = parseBoundedPositiveInt(c.req.query('limit'), 20, 50)
   const offset = (page - 1) * limit
 
   const conditions: string[] = []

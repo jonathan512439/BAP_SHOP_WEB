@@ -156,7 +156,11 @@ publicAssetsRouter.get('/*', async (c) => {
     })
   }
 
-  queueCatalogMaintenanceIfNeeded(c, assetPath)
+  if (assetPath === 'manifest.json') {
+    await runCatalogMaintenanceIfNeeded(c, assetPath)
+  } else {
+    queueCatalogMaintenanceIfNeeded(c, assetPath)
+  }
 
   const key = `public/${assetPath}`
   const object = await c.env.R2.get(key)

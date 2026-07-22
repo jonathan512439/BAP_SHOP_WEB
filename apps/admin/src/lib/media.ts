@@ -16,11 +16,13 @@ export type ProductImageVariants = Record<ProductImageVariantName, File>
 
 const MAX_BRANDING_VIDEO_BYTES = 8 * 1024 * 1024
 const RECOMMENDED_BRANDING_VIDEO_BYTES = 5 * 1024 * 1024
+const PRODUCT_IMAGE_FALLBACK_TYPE = 'image/jpeg'
 
 let ffmpegToolkitPromise: Promise<{
   ffmpeg: import('@ffmpeg/ffmpeg').FFmpeg
   fetchFile: typeof import('@ffmpeg/util').fetchFile
 }> | null = null
+let productImageOutputTypePromise: Promise<'image/webp' | 'image/jpeg'> | null = null
 
 function getBaseFilename(filename: string) {
   return filename.replace(/\.[^.]+$/, '')
@@ -32,6 +34,10 @@ function renameWithExtension(filename: string, extension: string) {
 
 function renameWithSuffix(filename: string, suffix: string, extension: string) {
   return `${getBaseFilename(filename)}-${suffix}${extension}`
+}
+
+function extensionForMime(type: 'image/webp' | 'image/jpeg') {
+  return type === 'image/webp' ? '.webp' : '.jpg'
 }
 
 function getTargetSize(width: number, height: number, maxWidth: number, maxHeight: number) {
@@ -96,9 +102,10 @@ async function optimizeRasterImage(file: File, options: ImageOptimizationOptions
   context.drawImage(image, 0, 0, width, height)
 
   const blob = await canvasToBlob(canvas, options.outputType, options.quality)
+  const outputExtension = extensionForMime(options.outputType)
 
-  return new File([blob], renameWithExtension(file.name, '.webp'), {
-    type: options.outputType,
+  return new File([blob], renameWithExtension(file.name, outputExtension), {
+    type: blob.type || options.outputType,
     lastModified: Date.now(),
   })
 }
@@ -125,11 +132,52 @@ async function encodeRasterImageFromElement(
   context.drawImage(image, 0, 0, width, height)
 
   const blob = await canvasToBlob(canvas, options.outputType, options.quality)
+  const outputExtension = extensionForMime(options.outputType)
 
-  return new File([blob], renameWithSuffix(sourceName, suffix, '.webp'), {
-    type: options.outputType,
+  return new File([blob], renameWithSuffix(sourceName, suffix, outputExtension), {
+    type: blob.type || options.outputType,
     lastModified: Date.now(),
   })
+}
+
+async function canEncodeCanvasType(type: 'image/webp' | 'image/jpeg') {
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  const context = canvas.getContext('2d')
+  context?.fillRect(0, 0, 1, 1)
+
+  try {
+    const blob = await canvasToBlob(canvas, type, 0.8)
+    if (blob.type !== type) return false
+
+    if (type !== 'image/webp') return true
+
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    return (
+      bytes.length >= 12 &&
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[3] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    )
+  } catch {
+    return false
+  }
+}
+
+async function getProductImageOutputType(): Promise<'image/webp' | 'image/jpeg'> {
+  if (!productImageOutputTypePromise) {
+    productImageOutputTypePromise = canEncodeCanvasType('image/webp').then((supportsWebp) =>
+      supportsWebp ? 'image/webp' : PRODUCT_IMAGE_FALLBACK_TYPE
+    )
+  }
+
+  return productImageOutputTypePromise
 }
 
 async function optimizeRasterImageFromElement(
@@ -246,6 +294,7 @@ export async function optimizeProductImage(file: File) {
 
 export async function optimizeProductImageVariants(file: File): Promise<ProductImageVariants> {
   const image = await loadImage(file)
+  const outputType = await getProductImageOutputType()
 
   const [thumb, card, detail, full] = await Promise.all([
     optimizeRasterImageFromElement(image, file.name, 'thumb', {
@@ -254,7 +303,7 @@ export async function optimizeProductImageVariants(file: File): Promise<ProductI
       quality: 0.8,
       minQuality: 0.72,
       maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.thumb,
-      outputType: 'image/webp',
+      outputType,
     }),
     optimizeRasterImageFromElement(image, file.name, 'card', {
       maxWidth: 640,
@@ -262,7 +311,7 @@ export async function optimizeProductImageVariants(file: File): Promise<ProductI
       quality: 0.82,
       minQuality: 0.74,
       maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.card,
-      outputType: 'image/webp',
+      outputType,
     }),
     optimizeRasterImageFromElement(image, file.name, 'detail', {
       maxWidth: 1200,
@@ -270,7 +319,7 @@ export async function optimizeProductImageVariants(file: File): Promise<ProductI
       quality: 0.84,
       minQuality: 0.76,
       maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.detail,
-      outputType: 'image/webp',
+      outputType,
     }),
     optimizeRasterImageFromElement(image, file.name, 'full', {
       maxWidth: 1600,
@@ -278,7 +327,7 @@ export async function optimizeProductImageVariants(file: File): Promise<ProductI
       quality: 0.88,
       minQuality: 0.8,
       maxBytes: PRODUCT_IMAGE_VARIANT_LIMITS_BYTES.full,
-      outputType: 'image/webp',
+      outputType,
     }),
   ])
 

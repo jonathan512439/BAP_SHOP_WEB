@@ -214,7 +214,7 @@ describe('Admin products routes', () => {
     })
   })
 
-  it('permite reservar manualmente un producto oculto sin asociarlo a un pedido', async () => {
+  it('permite reservar manualmente un producto oculto con vencimiento automatico', async () => {
     const response = await adminRequest(`/admin/products/${ids.hiddenProduct}/status`, {
       method: 'PATCH',
       headers: {
@@ -238,8 +238,9 @@ describe('Admin products routes', () => {
     expect(product).toMatchObject({
       status: 'reserved',
       reserved_order_id: null,
-      reserved_until: null,
     })
+    expect(product?.reserved_until).toBeTruthy()
+    expect(new Date(product?.reserved_until || '').getTime()).toBeGreaterThan(Date.now())
   })
 
   it('permite reactivar un producto vendido', async () => {
@@ -321,6 +322,37 @@ describe('Admin products routes', () => {
     expect(response.status).toBe(422)
     expect(payload.success).toBe(false)
     expect(payload.error).toContain('variantes optimizadas')
+  })
+
+  it('acepta variantes JPEG cuando el navegador no puede generar WebP real', async () => {
+    const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x43, 0x00])
+    const formData = new FormData()
+
+    for (const variant of ['thumb', 'card', 'detail', 'full']) {
+      formData.append(variant, new File([jpegBytes], `${variant}.jpg`, { type: 'image/jpeg' }))
+    }
+
+    const response = await adminRequest(`/admin/products/${ids.imageOpsProduct}/images`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    const payload = await response.json<{
+      success: boolean
+      data?: {
+        thumb_r2_key: string
+        card_r2_key: string
+        detail_r2_key: string
+        full_r2_key: string
+      }
+    }>()
+
+    expect(response.status).toBe(201)
+    expect(payload.success).toBe(true)
+    expect(payload.data?.thumb_r2_key).toMatch(/thumb\.jpg$/)
+    expect(payload.data?.card_r2_key).toMatch(/card\.jpg$/)
+    expect(payload.data?.detail_r2_key).toMatch(/detail\.jpg$/)
+    expect(payload.data?.full_r2_key).toMatch(/full\.jpg$/)
   })
 
   it('registra auditoria al cambiar orden e imagen principal', async () => {
